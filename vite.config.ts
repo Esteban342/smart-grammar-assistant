@@ -19,7 +19,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(import.meta.dirname, 'src/popup/index.html'),
-        background: resolve(import.meta.dirname, 'src/background/index.ts')
+        background: resolve(import.meta.dirname, 'src/background/index.ts'),
+        content: resolve(import.meta.dirname, 'src/content/content.ts') // <-- ¡Agregado aquí!
       },
       output: {
         entryFileNames: 'src/[name]/index.js',
