@@ -4,113 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Configuración - Smart Assistant</title>
-    <style>
-      :root {
-        --primary: #2563eb;
-        --primary-hover: #1d4ed8;
-        --bg: #ffffff;
-        --text: #1e293b;
-        --border: #e2e8f0;
-        --success: #16a34a;
-      }
-
-      body {
-        width: 320px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        margin: 0;
-        padding: 16px;
-        background-color: var(--bg);
-        color: var(--text);
-      }
-
-      .header {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 16px;
-        border-bottom: 1px solid var(--border);
-        padding-bottom: 12px;
-      }
-
-      .header h2 {
-        font-size: 16px;
-        margin: 0;
-        color: #0f172a;
-      }
-
-      .form-group {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        margin-bottom: 16px;
-      }
-
-      label {
-        font-size: 13px;
-        font-weight: 600;
-      }
-
-      .input-wrapper {
-        display: flex;
-        gap: 6px;
-      }
-
-      input[type="password"] {
-        flex: 1;
-        padding: 8px 10px;
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        font-size: 13px;
-        outline: none;
-      }
-
-      input[type="password"]:focus {
-        border-color: var(--primary);
-      }
-
-      button {
-        padding: 8px 14px;
-        background-color: var(--primary);
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: background 0.2s;
-      }
-
-      button:hover {
-        background-color: var(--primary-hover);
-      }
-
-      .status-badge {
-        font-size: 12px;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px;
-        border-radius: 6px;
-        background-color: #f8fafc;
-        border: 1px solid var(--border);
-      }
-
-      .status-badge.active {
-        background-color: #f0fdf4;
-        border-color: #bbf7d0;
-        color: var(--success);
-      }
-
-      .info-box {
-        margin-top: 16px;
-        font-size: 12px;
-        color: #64748b;
-        line-height: 1.4;
-        background: #f8fafc;
-        padding: 10px;
-        border-radius: 6px;
-      }
-    </style>
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <div class="header">
@@ -120,17 +14,17 @@
     <div class="form-group">
       <label for="apiKey">Gemini API Key</label>
       <div class="input-wrapper">
-        <input type="password" id="apiKey" placeholder="AIzaSy..." />
+        <input type="password" id="apiKey" placeholder="AIzaSy..." autocomplete="off" />
         <button id="saveBtn">Guardar</button>
       </div>
     </div>
 
     <div id="status" class="status-badge">
-      <span> Sin configurar</span>
+      <span>Configura tu API Key para comenzar</span>
     </div>
 
     <div class="info-box">
-       <strong>Asistente activo:</strong> Selecciona texto o haz clic en el icono flotante dentro de cualquier página para corregir o humanizar tus textos.
+      <strong>Asistente activo:</strong> Selecciona texto en cualquier página para corregir o humanizar tus textos.
     </div>
 
     <script type="module" src="./popup.ts"></script>
