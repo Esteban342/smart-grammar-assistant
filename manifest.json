@@ -2,12 +2,12 @@
   "manifest_version": 3,
   "name": "Smart Grammar Assistant & Humanizer",
   "version": "1.0.0",
-  "description": "Asistente inteligente con IA para corregir ortografía y humanizar texto sin límites.",
+  "description": "Asistente con IA para corregir, parafrasear y humanizar texto.",
   "permissions": [
-    "activeTab",
-    "scripting",
     "storage",
-    "contextMenus"
+    "contextMenus",
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "https://generativelanguage.googleapis.com/*"
@@ -16,14 +16,15 @@
     "service_worker": "src/background/index.js",
     "type": "module"
   },
-  "action": {
-    "default_popup": "src/popup/index.html",
-    "default_title": "Smart Grammar Assistant"
-  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["src/content/index.js"]
+      "js": ["src/content/index.js"],
+      "run_at": "document_idle",
+      "all_frames": true
     }
-  ]
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html"
+  }
 }
