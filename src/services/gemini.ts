@@ -1,58 +1,140 @@
-declare const chrome: any;
+async function getApiKey(): Promise<string> {
+  const extensionStorage = (globalThis as typeof globalThis & {
+    chrome?: {
+      storage?: {
+        local?: {
+          get: (keys: null | string[]) => Promise<Record<string, unknown>>;
+        };
+      };
+    };
+  }).chrome?.storage?.local;
 
-export async function fetchGeminiTranslation(text: string, mode: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (typeof chrome === 'undefined' || !chrome.runtime?.id) {
-      return reject(new Error('Recarga la página (F5) para sincronizar la extensión.'));
+  if (extensionStorage) {
+    const allData = await extensionStorage.get(null);
+
+    const directKey =
+      allData.gemini_api_key ||
+      allData.geminiApiKey ||
+      allData.apiKey ||
+      allData.key ||
+      allData.geminiKey;
+
+    if (typeof directKey === 'string' && directKey.trim() !== '') {
+      return directKey.trim();
     }
 
-    chrome.storage.local.get(['gemini_api_key'], async (result: any) => {
-      const apiKey = result?.gemini_api_key;
-
-      if (!apiKey) {
-        return reject(new Error('API Key no configurada en la extensión.'));
-      }
-
-      const prompt = buildPrompt(text, mode);
-      const payload = { contents: [{ parts: [{ text: prompt }] }] };
-
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          }
-        );
-
-        const data = await response.json();
-
-        if (data.error) {
-          if (data.error.code === 429 || data.error.message?.includes('quota')) {
-            return reject(new Error('Límite de cuota alcanzado. Espera 20s y reintenta.'));
-          }
-          return reject(new Error(data.error.message));
+    for (const val of Object.values(allData)) {
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (trimmed.startsWith('AIza') || trimmed.length > 20) {
+          return trimmed;
         }
-
-        const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        resolve(resultText || 'No se recibió respuesta.');
-      } catch (err) {
-        reject(new Error('Error de conexión con la API.'));
       }
-    });
-  });
+    }
+  }
+
+  return (
+    globalThis.localStorage?.getItem('gemini_api_key') ||
+    globalThis.localStorage?.getItem('geminiApiKey') ||
+    globalThis.localStorage?.getItem('apiKey') ||
+    ''
+  );
 }
 
-function buildPrompt(text: string, mode: string): string {
-  const prompts: Record<string, string> = {
-    humanize: 'Reescribe el texto para que suene 100% natural, fluido y orgánico en español cotidiano.',
-    standard: 'Parafrasea el texto manteniendo equilibrio entre claridad y fluidez.',
-    formal: 'Parafrasea el texto utilizando un tono corporativo, profesional y elegante.',
-    academic: 'Parafrasea el texto usando vocabulario técnico y precisión conceptual.',
-    simple: 'Parafrasea el texto con oraciones cortas y lenguaje muy accesible.',
-    creative: 'Parafrasea el texto con un estilo expresivo, dinámico y original.'
+export function buildPrompt(text: string, mode: string): string {
+  const instructions: Record<string, string> = {
+    humanize: 'Reescribe el siguiente texto para que suene completamente natural, fluido y humano en español cotidiano. Conserva el significado original.',
+    standard: 'Parafrasea el siguiente texto manteniendo equilibrio entre claridad y fluidez.',
+    formal: 'Reescribe el siguiente texto utilizando un tono corporativo, profesional y elegante.',
+    academic: 'Reescribe el siguiente texto usando vocabulario técnico y precisión conceptual.',
+    simple: 'Reescribe el siguiente texto con oraciones cortas y lenguaje muy accesible.',
+    creative: 'Reescribe el siguiente texto con un estilo expresivo, dinámico y original.'
   };
 
-  const instruction = prompts[mode] || prompts['standard'];
-  return `${instruction} Devuelve ÚNICAMENTE el texto resultante sin explicaciones adicionales:\n\n"${text}"`;
+  const instruction = instructions[mode] || instructions.standard;
+
+  return `${instruction}
+
+REGLAS ESTRICTAS:
+- Devuelve ÚNICAMENTE el texto reescrito.
+- No añadas comillas, explicaciones, ni notas adicionales.
+- No repitas la instrucción.
+
+TEXTO ORIGINAL:
+"""
+${text}
+"""`;
+}
+
+export async function streamGeminiTranslation(
+  text: string,
+  mode: string,
+  onChunk: (chunk: string) => void
+): Promise<string> {
+  const apiKey = await getApiKey();
+  const prompt = buildPrompt(text, mode);
+
+  if (!apiKey) {
+    throw new Error('API Key no configurada en la extensión. Guarda tu API Key desde el popup.');
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:streamGenerateContent?key=${apiKey}&alt=sse`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 2048
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    if (response.status === 429 || errorData.error?.message?.includes('quota')) {
+      throw new Error('Límite de cuota alcanzado. Espera unos segundos y reintenta.');
+    }
+    throw new Error(errorData.error?.message || `Error en la API de Gemini (${response.status})`);
+  }
+
+  if (!response.body) {
+    throw new Error('No se recibió flujo de datos desde la API.');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let fullText = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('data: ')) {
+        const jsonStr = trimmed.replace(/^data:\s*/, '');
+        if (jsonStr === '[DONE]') continue;
+        try {
+          const parsed = JSON.parse(jsonStr);
+          const chunkText = parsed.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (chunkText) {
+            fullText += chunkText;
+            onChunk(chunkText);
+          }
+        } catch {
+          // Ignorar chunks parciales
+        }
+      }
+    }
+  }
+
+  return fullText || 'No se recibió respuesta.';
 }
