@@ -1,4 +1,4 @@
-import { streamGeminiTranslation } from '../services/gemini';
+import { streamGeminiTranslation } from '../services/groq';
 import type { EditableTarget } from './types';
 import { replaceTextInPage } from './replacer';
 import { getOwnShadowRoot } from './shadow';

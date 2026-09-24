@@ -13,7 +13,7 @@ export function initDocsClipboardBridge(): void {
     if ((doc as any).__sa_copy_listener) return;
     (doc as any).__sa_copy_listener = true;
 
-    // ✅ FIX: sin { capture: true } -- Google Docs puebla clipboardData
+    //  FIX: sin { capture: true } -- Google Docs puebla clipboardData
     // durante la fase de BURBUJA, después de los listeners en captura.
     doc.addEventListener('copy', (event: ClipboardEvent) => {
       const text = event.clipboardData?.getData('text/plain');
