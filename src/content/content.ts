@@ -1,6 +1,6 @@
 // src/content/content.ts
-import { isEventFromOurUI } from './shadow';
-import { showFloatingMenu, hideFloatingMenu, openModalDirectly } from './modal';
+import { isEventFromOurUI } from './ui/shadow';
+import { showFloatingMenu, hideFloatingMenu, openModalDirectly } from './ui/modal';
 import { readSelectedText, resolveDeepTarget, SA_DEBUG } from './selection';
 import {
   IS_GOOGLE_DOCS,
