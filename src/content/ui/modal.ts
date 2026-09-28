@@ -1,5 +1,4 @@
-import { streamGeminiTranslation } from '../../services/groq';
-import { correctTextWithLanguageTool } from '../../services/languagetool';
+import { streamGeminiTranslation, correctTextWithQwen, diffTextChanges } from '../../services/groq';
 import type { EditableTarget } from '../types';
 import { replaceTextInPage } from '../replacer';
 import { getOwnShadowRoot } from './shadow';
@@ -29,6 +28,18 @@ export interface FloatingMenuOptions {
   editableTarget?: EditableTarget | null;
 }
 
+interface GrammarSuggestion {
+  from: string;
+  to: string;
+  applied: boolean;
+}
+
+interface GrammarState {
+  originalText: string;
+  correctedText: string;
+  suggestions: GrammarSuggestion[];
+}
+
 const MENU_ID = 'smart-assistant-menu';
 const MODAL_ID = 'smart-assistant-modal';
 const STYLES_ID = 'smart-assistant-styles-v2';
@@ -37,7 +48,23 @@ const modalCache: Record<string, string> = {};
 let isProcessing = false;
 let currentTypingInterval: any = null;
 let currentOptions: FloatingMenuOptions | null = null;
+let grammarState: GrammarState | null = null;
 
+// Limpia caracteres invisibles que Docs inserta al copiar texto.
+// Sin esto, el modelo recibe el texto corrupto y corrige mal.
+function sanitizeText(text: string): string {
+  return text
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u202F/g, ' ')
+    .replace(/\u2007/g, ' ')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// Inyecta todos los estilos del menu y el modal dentro del shadow root.
 function ensureStyles(): void {
   const root = getOwnShadowRoot();
   if (root.getElementById(STYLES_ID)) return;
@@ -184,44 +211,97 @@ function ensureStyles(): void {
       line-height: 1.65 !important;
       color: #1A2436 !important;
       min-height: 100px !important;
-      max-height: 200px !important;
+      max-height: 180px !important;
       overflow-y: auto !important;
-      margin-bottom: 16px !important;
+      margin-bottom: 14px !important;
       white-space: pre-wrap !important;
       word-break: break-word !important;
     }
-    #${MODAL_ID} .sa-errors-panel {
-      background: #FFFFFF !important;
-      border: 1px solid #E2E8F0 !important;
-      border-radius: 12px !important;
-      padding: 12px !important;
-      margin-bottom: 14px !important;
-      max-height: 180px !important;
-      overflow-y: auto !important;
+    #${MODAL_ID} .sa-grammar-header-row {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      margin-bottom: 8px !important;
+      padding: 0 2px !important;
     }
-    #${MODAL_ID} .sa-error-item {
+    #${MODAL_ID} .sa-grammar-counter {
+      font-size: 11px !important;
+      color: #64748B !important;
+      font-weight: 500 !important;
+    }
+    #${MODAL_ID} .sa-grammar-apply-all {
+      background: transparent !important;
+      border: 1px solid #D5DDE8 !important;
+      border-radius: 6px !important;
+      padding: 4px 10px !important;
+      font-size: 11px !important;
+      font-weight: 600 !important;
+      color: #0F1E35 !important;
+      cursor: pointer !important;
+      font-family: inherit !important;
+      transition: all 0.15s !important;
+    }
+    #${MODAL_ID} .sa-grammar-apply-all:hover {
+      background: #EEF2F7 !important;
+      border-color: #0F1E35 !important;
+    }
+    #${MODAL_ID} .sa-grammar-apply-all:disabled {
+      opacity: 0.4 !important;
+      cursor: not-allowed !important;
+    }
+    #${MODAL_ID} .sa-grammar-suggestions {
+      max-height: 150px !important;
+      overflow-y: auto !important;
+      margin-bottom: 14px !important;
+    }
+    #${MODAL_ID} .sa-grammar-suggestion {
       display: flex !important;
       align-items: center !important;
       gap: 8px !important;
-      padding: 8px 10px !important;
+      padding: 9px 12px !important;
       border-radius: 8px !important;
-      background: #F8FAFC !important;
+      background: #FFFFFF !important;
+      border: 1px solid #E2E8F0 !important;
       margin-bottom: 6px !important;
       font-size: 12px !important;
+      cursor: pointer !important;
+      transition: all 0.15s !important;
+      user-select: none !important;
     }
-    #${MODAL_ID} .sa-error-item:last-child { margin-bottom: 0 !important; }
-    #${MODAL_ID} .sa-error-original {
+    #${MODAL_ID} .sa-grammar-suggestion:hover {
+      background: #EEF2F7 !important;
+      border-color: #D5DDE8 !important;
+    }
+    #${MODAL_ID} .sa-grammar-suggestion.sa-applied {
+      background: #F0FDF9 !important;
+      border-color: #A7F3D0 !important;
+    }
+    #${MODAL_ID} .sa-sug-original {
       color: #DC2626 !important;
       text-decoration: line-through !important;
       font-weight: 500 !important;
     }
-    #${MODAL_ID} .sa-error-arrow {
+    #${MODAL_ID} .sa-grammar-suggestion.sa-applied .sa-sug-original {
+      color: #94A3B8 !important;
+    }
+    #${MODAL_ID} .sa-sug-arrow {
       color: #94A3B8 !important;
       font-size: 11px !important;
     }
-    #${MODAL_ID} .sa-error-replacement {
+    #${MODAL_ID} .sa-sug-replacement {
       color: #0F6E5C !important;
       font-weight: 600 !important;
+    }
+    #${MODAL_ID} .sa-sug-check {
+      margin-left: auto !important;
+      color: #0F6E5C !important;
+      font-size: 14px !important;
+      font-weight: 700 !important;
+      opacity: 0 !important;
+      transition: opacity 0.15s !important;
+    }
+    #${MODAL_ID} .sa-grammar-suggestion.sa-applied .sa-sug-check {
+      opacity: 1 !important;
     }
     #${MODAL_ID} .sa-modal-actions {
       display: flex !important;
@@ -264,16 +344,16 @@ function captureDocsTextIfNeeded(): void {
   const freshText = getLastDocsClipboardText();
   if (freshText && freshText.trim()) {
     currentOptions.text = freshText;
-    log('Docs: texto capturado en mousedown del botón:', JSON.stringify(freshText.slice(0, 40)));
+    log('Docs: texto capturado en mousedown del boton:', JSON.stringify(freshText.slice(0, 40)));
   } else {
-    log('Docs: no se capturó texto en mousedown');
+    log('Docs: no se capturo texto en mousedown');
   }
 }
 
 export function showFloatingMenu(options: FloatingMenuOptions) {
   const existingRoot = getOwnShadowRoot();
   if (existingRoot.getElementById(MODAL_ID)) {
-    log('modal ya abierto, no mostrar menú');
+    log('modal ya abierto, no mostrar menu');
     return;
   }
 
@@ -352,11 +432,11 @@ export function showFloatingMenu(options: FloatingMenuOptions) {
     e.preventDefault();
     e.stopPropagation();
     menu.classList.add('sa-expanded');
-    log('menú expandido');
+    log('menu expandido');
   });
 
   root.appendChild(menu);
-  log('botón circular insertado en', { x: adjustedX, y: adjustedY, source: options.source });
+  log('boton circular insertado en', { x: adjustedX, y: adjustedY, source: options.source });
 }
 
 export function removeFloatingMenu() {
@@ -383,27 +463,26 @@ async function handleAction(mode: string): Promise<void> {
 
   if (options.source === 'docs-canvas') {
     if (!text || !text.trim()) {
-      log('Docs: text vacío en handleAction, intentando fallback...');
+      log('Docs: text vacio en handleAction, intentando fallback');
       forceCaptureSelectionViaCopy();
       await new Promise((resolve) => setTimeout(resolve, 150));
       text = getLastDocsClipboardText();
     }
     if (looksLikeDocsInternalId(text)) {
-      log('texto parece ID interno de Docs -- descartando');
+      log('texto capturado parece un ID interno de Docs, se descarta');
       text = '';
     }
   }
 
   if (!text || !text.trim()) {
-    log('texto vacío, intentando leer selección viva...');
     const liveSel = window.getSelection()?.toString().trim() || '';
     if (liveSel) text = liveSel;
   }
 
   if (!text || !text.trim()) {
-    log('handleAction: texto vacío tras todos los intentos');
+    log('handleAction: texto vacio tras todos los intentos');
     openModal(
-      '⚠️ No se pudo leer automáticamente el texto seleccionado en esta página.\n\nPrueba a copiar el texto con Ctrl+C antes de presionar el botón.',
+      'No se pudo leer automaticamente el texto seleccionado en esta pagina.\n\nPrueba a copiar el texto con Ctrl+C antes de presionar el boton.',
       mode,
       options.editableTarget || null
     );
@@ -419,6 +498,8 @@ function openModal(originalText: string, mode: string, editableTarget: EditableT
   removeExistingModal();
   clearCacheIfNewText(originalText);
 
+  grammarState = null;
+
   const root = getOwnShadowRoot();
   let activeMode = mode;
   const isGrammar = mode === 'grammar';
@@ -428,9 +509,9 @@ function openModal(originalText: string, mode: string, editableTarget: EditableT
   modal.id = MODAL_ID;
 
   const modes = [
-    { id: 'standard', label: 'Estándar' },
+    { id: 'standard', label: 'Estandar' },
     { id: 'formal', label: 'Formal' },
-    { id: 'academic', label: 'Académico' },
+    { id: 'academic', label: 'Academico' },
     { id: 'simple', label: 'Sencillo' },
     { id: 'creative', label: 'Creativo' },
   ];
@@ -444,7 +525,7 @@ function openModal(originalText: string, mode: string, editableTarget: EditableT
       .join('');
 
   const titleText = isGrammar
-    ? 'Corrección Gramatical'
+    ? 'Correccion Gramatical'
     : isHumanizeOnly
     ? 'Texto Humanizado'
     : 'Parafrasear Texto';
@@ -452,19 +533,19 @@ function openModal(originalText: string, mode: string, editableTarget: EditableT
   modal.innerHTML = `
     <div class="sa-modal-header" id="sa-modal-drag-handle">
       <div class="sa-modal-title">${titleText}</div>
-      <button class="sa-modal-close" id="sa-modal-close" title="Cerrar (o haz clic fuera)">✕</button>
+      <button class="sa-modal-close" id="sa-modal-close" title="Cerrar">X</button>
     </div>
 
     ${!isHumanizeOnly && !isGrammar ? `<div class="sa-modal-tabs" id="sa-modal-tabs">${renderTabs()}</div>` : ''}
 
     <div class="sa-modal-output" id="sa-modal-output">${LOADING_SPINNER_HTML}</div>
 
-    <div id="sa-errors-container"></div>
+    <div id="sa-grammar-area"></div>
 
     <div class="sa-modal-actions">
       ${editableTarget ? `<button class="sa-modal-btn sa-primary" id="sa-replace-btn">Reemplazar</button>` : ''}
       <button class="sa-modal-btn" id="sa-copy-btn">Copiar</button>
-      <button class="sa-modal-btn" id="sa-regen-btn">Reintentar</button>
+      <button class="sa-modal-btn" id="sa-regen-btn">Volver a checar</button>
     </div>
   `;
 
@@ -517,8 +598,11 @@ function openModal(originalText: string, mode: string, editableTarget: EditableT
 
   modal.querySelector('#sa-regen-btn')?.addEventListener('click', () => {
     if (!isProcessing) {
+      const outputEl = root.getElementById('sa-modal-output');
+      const currentText = outputEl?.innerText || originalText;
       delete modalCache[activeMode];
-      loadModeContent(originalText, activeMode);
+      grammarState = null;
+      loadModeContent(currentText, activeMode);
     }
   });
 
@@ -598,7 +682,7 @@ function makeModalDraggable(modal: HTMLElement): void {
 async function loadModeContent(text: string, mode: string) {
   const root = getOwnShadowRoot();
   const outputDiv = root.getElementById('sa-modal-output');
-  const errorsContainer = root.getElementById('sa-errors-container');
+  const grammarArea = root.getElementById('sa-grammar-area');
   if (!outputDiv) return;
 
   if (currentTypingInterval) {
@@ -607,10 +691,15 @@ async function loadModeContent(text: string, mode: string) {
   }
 
   outputDiv.style.overflowY = 'auto';
-  if (errorsContainer) errorsContainer.innerHTML = '';
+  if (grammarArea) grammarArea.innerHTML = '';
 
-  if (text.startsWith('⚠️ No se pudo leer')) {
+  if (text.startsWith('No se pudo leer')) {
     outputDiv.innerText = text;
+    return;
+  }
+
+  if (mode === 'grammar') {
+    await loadGrammarMode(text, outputDiv, grammarArea);
     return;
   }
 
@@ -623,45 +712,6 @@ async function loadModeContent(text: string, mode: string) {
   isProcessing = true;
   log('procesando', { mode, longitudTexto: text.length });
 
-  // ============================================================
-  // MODO GRAMMAR: usar LanguageTool
-  // ============================================================
-  if (mode === 'grammar') {
-    try {
-      const result = await correctTextWithLanguageTool(text);
-      modalCache[mode] = result.correctedText;
-      outputDiv.innerText = result.correctedText;
-
-      // Si hay errores, mostrar la lista
-      if (errorsContainer && result.errors.length > 0) {
-        errorsContainer.innerHTML = `
-          <div class="sa-errors-panel">
-            ${result.errors
-              .map(
-                (err) => `
-              <div class="sa-error-item">
-                <span class="sa-error-original">${escapeHtml(err.original)}</span>
-                <span class="sa-error-arrow">→</span>
-                <span class="sa-error-replacement">${escapeHtml(err.replacement)}</span>
-              </div>
-            `
-              )
-              .join('')}
-          </div>
-        `;
-      }
-    } catch (error: any) {
-      console.error('[SA:modal] LanguageTool FALLÓ:', error);
-      outputDiv.innerText = `⚠️ ${error?.message || 'Error al corregir con LanguageTool'}`;
-    } finally {
-      isProcessing = false;
-    }
-    return;
-  }
-
-  // ============================================================
-  // MODOS NORMALES (humanize, standard, etc.): usar Groq
-  // ============================================================
   const charQueue: string[] = [];
   let isTyping = false;
   let hasClearedSpinner = false;
@@ -688,7 +738,7 @@ async function loadModeContent(text: string, mode: string) {
 
   try {
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('La conexión a la API excedió el tiempo de espera (15s).')), 15000)
+      setTimeout(() => reject(new Error('La conexion a la API excedio el tiempo de espera (30s).')), 30000)
     );
 
     const apiPromise = streamGeminiTranslation(text, mode, (chunk: string) => {
@@ -707,7 +757,7 @@ async function loadModeContent(text: string, mode: string) {
         clearInterval(currentTypingInterval);
         currentTypingInterval = null;
       }
-      outputDiv.innerText = fullText || 'No se recibió respuesta.';
+      outputDiv.innerText = fullText || 'No se recibio respuesta.';
       hasClearedSpinner = true;
     }
   } catch (error: any) {
@@ -716,16 +766,223 @@ async function loadModeContent(text: string, mode: string) {
       clearInterval(currentTypingInterval);
       currentTypingInterval = null;
     }
-    const errorMsg = error?.message || 'Ocurrió un error al procesar el texto.';
+    const errorMsg = error?.message || 'Ocurrio un error al procesar el texto.';
     if (errorMsg.includes('API Key') || errorMsg.includes('configurada')) {
       outputDiv.style.overflowY = 'hidden';
       outputDiv.innerHTML = renderApiKeyErrorHTML();
     } else {
-      outputDiv.innerText = `⚠️ ${errorMsg}`;
+      outputDiv.innerText = `Error: ${errorMsg}`;
     }
   } finally {
     isProcessing = false;
   }
+}
+
+// ------------------------------------------------------------
+// MODO GRAMMAR con doble pasada.
+// Se limpia el texto antes de enviarlo para eliminar caracteres
+// invisibles que Docs inserta al copiar.
+// ------------------------------------------------------------
+async function loadGrammarMode(
+  text: string,
+  outputDiv: HTMLElement,
+  grammarArea: HTMLElement | null
+): Promise<void> {
+  isProcessing = true;
+  outputDiv.innerHTML = LOADING_SPINNER_HTML;
+
+  // Limpiar el texto antes de enviarlo a la IA
+  const cleanText = sanitizeText(text);
+  log('[grammar] texto sanitizado', {
+    original: text.length,
+    sanitizado: cleanText.length,
+  });
+
+  if (grammarArea) {
+    grammarArea.innerHTML = `
+      <div style="text-align: center; font-size: 11px; color: #94A3B8; margin-bottom: 10px; font-style: italic;">
+        Corrigiendo texto
+      </div>
+    `;
+  }
+
+  // ------------------------------------------------------------
+  // PASO 1: corregir el texto con streaming
+  // ------------------------------------------------------------
+  let correctedText = '';
+  try {
+    const charQueue: string[] = [];
+    let isTyping = false;
+    let hasClearedSpinner = false;
+
+    const startSmoothTyping = () => {
+      if (isTyping) return;
+      isTyping = true;
+      currentTypingInterval = setInterval(() => {
+        if (charQueue.length > 0) {
+          if (!hasClearedSpinner) {
+            outputDiv.innerText = '';
+            hasClearedSpinner = true;
+          }
+          const nextChar = charQueue.shift();
+          outputDiv.innerText += nextChar;
+          outputDiv.scrollTop = outputDiv.scrollHeight;
+        } else if (!isProcessing) {
+          clearInterval(currentTypingInterval);
+          currentTypingInterval = null;
+          isTyping = false;
+        }
+      }, 15);
+    };
+
+    correctedText = await correctTextWithQwen(cleanText, (chunk: string) => {
+      for (const char of chunk) charQueue.push(char);
+      startSmoothTyping();
+    });
+
+    // Asegurar que se muestra completo
+    outputDiv.innerText = correctedText;
+  } catch (error: any) {
+    console.error('[SA:modal] grammar paso 1 fallo:', error);
+    outputDiv.innerText = `Error: ${error?.message || 'no se pudo corregir el texto'}`;
+    if (grammarArea) grammarArea.innerHTML = '';
+    isProcessing = false;
+    return;
+  }
+
+  // ------------------------------------------------------------
+  // PASO 2: comparar y obtener la lista de cambios
+  // ------------------------------------------------------------
+  if (grammarArea) {
+    grammarArea.innerHTML = `
+      <div style="text-align: center; font-size: 11px; color: #94A3B8; margin-bottom: 10px; font-style: italic;">
+        Generando lista de cambios
+      </div>
+    `;
+  }
+
+  try {
+    const corrections = await diffTextChanges(cleanText, correctedText);
+    log('[grammar] lista de cambios:', corrections.length);
+
+    if (corrections.length === 0) {
+      grammarState = null;
+      if (grammarArea) {
+        grammarArea.innerHTML = `
+          <div style="text-align: center; font-size: 11px; color: #0F6E5C; margin-bottom: 10px; font-weight: 600;">
+            Sin errores detectados
+          </div>
+        `;
+      }
+      return;
+    }
+
+    // Estado inicial: todos los cambios aplicados
+    // porque el texto de arriba ya esta corregido
+    grammarState = {
+      originalText: cleanText,
+      correctedText,
+      suggestions: corrections.map((c) => ({ from: c.from, to: c.to, applied: true })),
+    };
+
+    if (grammarArea) {
+      renderGrammarArea(grammarArea);
+    }
+  } catch (error: any) {
+    console.error('[SA:modal] grammar paso 2 fallo:', error);
+    grammarState = null;
+    if (grammarArea) {
+      grammarArea.innerHTML = `
+        <div style="text-align: center; font-size: 11px; color: #64748B; margin-bottom: 10px;">
+          Correccion aplicada
+        </div>
+      `;
+    }
+  } finally {
+    isProcessing = false;
+  }
+}
+
+function renderGrammarArea(container: HTMLElement): void {
+  if (!grammarState) return;
+
+  const total = grammarState.suggestions.length;
+  const applied = grammarState.suggestions.filter((s) => s.applied).length;
+  const pending = total - applied;
+
+  const counterText = `${total} ${total === 1 ? 'cambio' : 'cambios'} - ${applied} activo${applied === 1 ? '' : 's'}`;
+
+  const suggestionsHtml = grammarState.suggestions
+    .map((s, i) => {
+      const appliedClass = s.applied ? 'sa-applied' : '';
+      return `
+        <div class="sa-grammar-suggestion ${appliedClass}" data-index="${i}">
+          <span class="sa-sug-original">${escapeHtml(s.from)}</span>
+          <span class="sa-sug-arrow">a</span>
+          <span class="sa-sug-replacement">${escapeHtml(s.to)}</span>
+          <span class="sa-sug-check">✓</span>
+        </div>
+      `;
+    })
+    .join('');
+
+  container.innerHTML = `
+    <div class="sa-grammar-header-row">
+      <span class="sa-grammar-counter">${counterText}</span>
+      <button class="sa-grammar-apply-all" id="sa-grammar-apply-all" ${pending === 0 ? 'disabled' : ''}>Aplicar todo</button>
+    </div>
+    <div class="sa-grammar-suggestions" id="sa-grammar-suggestions">
+      ${suggestionsHtml}
+    </div>
+  `;
+
+  const suggestionsList = container.querySelector('#sa-grammar-suggestions');
+  suggestionsList?.addEventListener('click', (e) => {
+    const target = (e.target as HTMLElement).closest('.sa-grammar-suggestion') as HTMLElement | null;
+    if (!target) return;
+    const index = parseInt(target.getAttribute('data-index') || '-1', 10);
+    if (index < 0 || !grammarState) return;
+    toggleGrammarSuggestion(index);
+  });
+
+  container.querySelector('#sa-grammar-apply-all')?.addEventListener('click', () => {
+    applyAllGrammarSuggestions();
+  });
+}
+
+function toggleGrammarSuggestion(index: number): void {
+  if (!grammarState) return;
+  grammarState.suggestions[index].applied = !grammarState.suggestions[index].applied;
+  refreshGrammarView();
+}
+
+function applyAllGrammarSuggestions(): void {
+  if (!grammarState) return;
+  grammarState.suggestions.forEach((s) => (s.applied = true));
+  refreshGrammarView();
+}
+
+function refreshGrammarView(): void {
+  const root = getOwnShadowRoot();
+  const outputDiv = root.getElementById('sa-modal-output') as HTMLElement | null;
+  const grammarArea = root.getElementById('sa-grammar-area') as HTMLElement | null;
+  if (!outputDiv || !grammarArea || !grammarState) return;
+
+  outputDiv.innerText = buildTextWithAppliedSuggestions();
+  renderGrammarArea(grammarArea);
+}
+
+function buildTextWithAppliedSuggestions(): string {
+  if (!grammarState) return '';
+
+  let result = grammarState.correctedText;
+  for (const s of grammarState.suggestions) {
+    if (!s.applied) {
+      result = result.replace(s.to, s.from);
+    }
+  }
+
+  return result;
 }
 
 function escapeHtml(str: string): string {
@@ -749,6 +1006,7 @@ function removeExistingModal() {
     clearInterval(currentTypingInterval);
     currentTypingInterval = null;
   }
+  grammarState = null;
   const root = getOwnShadowRoot();
   root.getElementById(MODAL_ID)?.remove();
 }
