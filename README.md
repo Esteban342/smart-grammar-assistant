@@ -20,6 +20,7 @@ Las siguientes plataformas no están soportadas por limitaciones del navegador o
 
 ## Estructura principal
 
+```
 corrector-ia-extension/
 ├── manifest.json
 ├── package.json
@@ -46,6 +47,7 @@ corrector-ia-extension/
     │   └── groq.ts
     └── utils/
         └── storage.ts
+```
 
 La carpeta content/ contiene la lógica que se inyecta en cada página. La subcarpeta ui/ agrupa los archivos visuales del menú flotante y el modal. La carpeta services/ contiene los clientes de las APIs externas. La carpeta popup/ contiene la interfaz de configuración.
 
