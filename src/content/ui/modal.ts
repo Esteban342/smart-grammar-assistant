@@ -1,4 +1,5 @@
-import { streamGeminiTranslation, correctTextWithQwen, diffTextChanges } from '../../services/groq';
+import * as Diff from 'diff';
+import { streamGeminiTranslation, correctTextWithQwen } from '../../services/groq';
 import type { EditableTarget } from '../types';
 import { replaceTextInPage } from '../replacer';
 import { getOwnShadowRoot } from './shadow';
@@ -51,7 +52,6 @@ let currentOptions: FloatingMenuOptions | null = null;
 let grammarState: GrammarState | null = null;
 
 // Limpia caracteres invisibles que Docs inserta al copiar texto.
-// Sin esto, el modelo recibe el texto corrupto y corrige mal.
 function sanitizeText(text: string): string {
   return text
     .replace(/\u00A0/g, ' ')
@@ -62,6 +62,44 @@ function sanitizeText(text: string): string {
     .replace(/\r/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+// Calcula la lista de cambios comparando original y corregido.
+// Se ejecuta localmente, no consume API.
+function computeLocalDiff(
+  original: string,
+  corrected: string
+): Array<{ from: string; to: string }> {
+  try {
+    const parts = Diff.diffWords(original, corrected);
+    const corrections: Array<{ from: string; to: string }> = [];
+
+    let i = 0;
+    while (i < parts.length) {
+      const part = parts[i];
+
+      if (part.removed) {
+        // Buscar el siguiente part que sea added
+        const next = parts[i + 1];
+        if (next && next.added) {
+          const fromText = part.value.trim();
+          const toText = next.value.trim();
+          if (fromText && toText && fromText !== toText) {
+            corrections.push({ from: fromText, to: toText });
+          }
+          i += 2;
+          continue;
+        }
+      }
+
+      i++;
+    }
+
+    return corrections;
+  } catch (err) {
+    console.error('[SA:modal] Error en diff local:', err);
+    return [];
+  }
 }
 
 // Inyecta todos los estilos del menu y el modal dentro del shadow root.
@@ -779,9 +817,9 @@ async function loadModeContent(text: string, mode: string) {
 }
 
 // ------------------------------------------------------------
-// MODO GRAMMAR con doble pasada.
-// Se limpia el texto antes de enviarlo para eliminar caracteres
-// invisibles que Docs inserta al copiar.
+// MODO GRAMMAR
+// Paso 1: Qwen corrige el texto (una sola llamada a la API).
+// Paso 2: diff local con jsdiff (cero llamadas, cero tokens).
 // ------------------------------------------------------------
 async function loadGrammarMode(
   text: string,
@@ -791,7 +829,6 @@ async function loadGrammarMode(
   isProcessing = true;
   outputDiv.innerHTML = LOADING_SPINNER_HTML;
 
-  // Limpiar el texto antes de enviarlo a la IA
   const cleanText = sanitizeText(text);
   log('[grammar] texto sanitizado', {
     original: text.length,
@@ -806,9 +843,7 @@ async function loadGrammarMode(
     `;
   }
 
-  // ------------------------------------------------------------
-  // PASO 1: corregir el texto con streaming
-  // ------------------------------------------------------------
+  // PASO 1: corregir el texto con Qwen
   let correctedText = '';
   try {
     const charQueue: string[] = [];
@@ -839,9 +874,9 @@ async function loadGrammarMode(
       for (const char of chunk) charQueue.push(char);
       startSmoothTyping();
     });
-
-    // Asegurar que se muestra completo
-    outputDiv.innerText = correctedText;
+     if (!isTyping) {
+      outputDiv.innerText = correctedText;
+    }
   } catch (error: any) {
     console.error('[SA:modal] grammar paso 1 fallo:', error);
     outputDiv.innerText = `Error: ${error?.message || 'no se pudo corregir el texto'}`;
@@ -850,57 +885,35 @@ async function loadGrammarMode(
     return;
   }
 
-  // ------------------------------------------------------------
-  // PASO 2: comparar y obtener la lista de cambios
-  // ------------------------------------------------------------
-  if (grammarArea) {
-    grammarArea.innerHTML = `
-      <div style="text-align: center; font-size: 11px; color: #94A3B8; margin-bottom: 10px; font-style: italic;">
-        Generando lista de cambios
-      </div>
-    `;
-  }
 
-  try {
-    const corrections = await diffTextChanges(cleanText, correctedText);
-    log('[grammar] lista de cambios:', corrections.length);
+  // PASO 2: diff local (sin API)
+  const corrections = computeLocalDiff(cleanText, correctedText);
+  log('[grammar] diff local encontro', corrections.length, 'cambios');
 
-    if (corrections.length === 0) {
-      grammarState = null;
-      if (grammarArea) {
-        grammarArea.innerHTML = `
-          <div style="text-align: center; font-size: 11px; color: #0F6E5C; margin-bottom: 10px; font-weight: 600;">
-            Sin errores detectados
-          </div>
-        `;
-      }
-      return;
-    }
-
-    // Estado inicial: todos los cambios aplicados
-    // porque el texto de arriba ya esta corregido
-    grammarState = {
-      originalText: cleanText,
-      correctedText,
-      suggestions: corrections.map((c) => ({ from: c.from, to: c.to, applied: true })),
-    };
-
-    if (grammarArea) {
-      renderGrammarArea(grammarArea);
-    }
-  } catch (error: any) {
-    console.error('[SA:modal] grammar paso 2 fallo:', error);
+  if (corrections.length === 0) {
     grammarState = null;
     if (grammarArea) {
       grammarArea.innerHTML = `
-        <div style="text-align: center; font-size: 11px; color: #64748B; margin-bottom: 10px;">
-          Correccion aplicada
+        <div style="text-align: center; font-size: 11px; color: #0F6E5C; margin-bottom: 10px; font-weight: 600;">
+          Sin errores detectados
         </div>
       `;
     }
-  } finally {
     isProcessing = false;
+    return;
   }
+
+  grammarState = {
+    originalText: cleanText,
+    correctedText,
+    suggestions: corrections.map((c) => ({ from: c.from, to: c.to, applied: true })),
+  };
+
+  if (grammarArea) {
+    renderGrammarArea(grammarArea);
+  }
+
+  isProcessing = false;
 }
 
 function renderGrammarArea(container: HTMLElement): void {
@@ -926,10 +939,13 @@ function renderGrammarArea(container: HTMLElement): void {
     })
     .join('');
 
+  const allApplied = pending === 0;
+  const buttonLabel = allApplied ? 'Desmarcar todo' : 'Aplicar todo';
+
   container.innerHTML = `
     <div class="sa-grammar-header-row">
       <span class="sa-grammar-counter">${counterText}</span>
-      <button class="sa-grammar-apply-all" id="sa-grammar-apply-all" ${pending === 0 ? 'disabled' : ''}>Aplicar todo</button>
+      <button class="sa-grammar-apply-all" id="sa-grammar-apply-all">${buttonLabel}</button>
     </div>
     <div class="sa-grammar-suggestions" id="sa-grammar-suggestions">
       ${suggestionsHtml}
@@ -945,8 +961,13 @@ function renderGrammarArea(container: HTMLElement): void {
     toggleGrammarSuggestion(index);
   });
 
-  container.querySelector('#sa-grammar-apply-all')?.addEventListener('click', () => {
-    applyAllGrammarSuggestions();
+    container.querySelector('#sa-grammar-apply-all')?.addEventListener('click', () => {
+    if (allApplied) {
+      grammarState?.suggestions.forEach((s) => (s.applied = false));
+      refreshGrammarView();
+    } else {
+      applyAllGrammarSuggestions();
+    }
   });
 }
 
