@@ -20,7 +20,7 @@ export default defineConfig({
       input: {
         popup: resolve(import.meta.dirname, 'src/popup/index.html'),
         background: resolve(import.meta.dirname, 'src/background/index.ts'),
-        content: resolve(import.meta.dirname, 'src/content/content.ts') // <-- ¡Agregado aquí!
+        content: resolve(import.meta.dirname, 'src/content/index.ts') 
       },
       output: {
         entryFileNames: 'src/[name]/index.js',
