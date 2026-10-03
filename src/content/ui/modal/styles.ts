@@ -2,6 +2,7 @@
 // Inyeccion de todos los estilos del menu y el modal dentro del shadow root.
 
 import { getOwnShadowRoot } from '../shadow';
+import { detectTheme, getDarkThemeOverrides } from './theme';
 
 export const MENU_ID = 'smart-assistant-menu';
 export const MODAL_ID = 'smart-assistant-modal';
@@ -273,6 +274,20 @@ export function ensureStyles(): void {
     #${MODAL_ID} .sa-modal-btn.sa-primary:hover {
       background: #1A2E4A !important;
     }
-  `;
+      `;
+
   root.appendChild(style);
+
+  // Los overrides oscuros se anaden DESPUES del estilo base para que
+  // las reglas con !important se apliquen correctamente.
+  const darkStyleId = STYLES_ID + '-dark';
+  const existingDark = root.getElementById(darkStyleId);
+  if (existingDark) existingDark.remove();
+
+  if (detectTheme() === 'dark') {
+    const darkStyle = document.createElement('style');
+    darkStyle.id = darkStyleId;
+    darkStyle.textContent = getDarkThemeOverrides(MENU_ID, MODAL_ID);
+    root.appendChild(darkStyle);
+  }
 }
