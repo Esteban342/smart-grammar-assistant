@@ -3,19 +3,26 @@
 
 import { streamCompletion } from './client';
 import { buildRewritePrompt, REWRITE_SYSTEM_PROMPT } from './prompts';
+import { getCachedResult, setCachedResult } from '../cache';
 
 const REWRITE_MODEL = 'openai/gpt-oss-120b';
 
-// Reescribe el texto segun el modo indicado.
-// Usa streaming y entrega cada fragmento con onChunk.
 export async function streamRewrite(
   text: string,
   mode: string,
   onChunk: (chunk: string) => void
 ): Promise<string> {
+  // 1. Intentar leer del cache
+  const cached = await getCachedResult(text, mode);
+  if (cached) {
+    onChunk(cached);
+    return cached;
+  }
+
+  // 2. Llamar a la API
   const prompt = buildRewritePrompt(text, mode);
 
-  return streamCompletion(
+  const result = await streamCompletion(
     {
       model: REWRITE_MODEL,
       systemPrompt: REWRITE_SYSTEM_PROMPT,
@@ -25,4 +32,11 @@ export async function streamRewrite(
     },
     onChunk
   );
+
+  // 3. Guardar en cache sin bloquear
+  if (result) {
+    void setCachedResult(text, mode, result);
+  }
+
+  return result;
 }

@@ -1,5 +1,6 @@
 // src/content/ui/modal/rewrite-mode.ts
 // Modo humanizar y parafrasear. Usa streaming de Groq.
+// El timeout lo maneja el cliente de Groq.
 
 import { streamGeminiTranslation } from '../../../services/groq';
 import { renderApiKeyErrorHTML } from '../components';
@@ -51,18 +52,13 @@ export async function runRewriteMode(
   };
 
   try {
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('La conexion a la API excedio el tiempo de espera (30s).')), 30000)
-    );
-
-    const apiPromise = streamGeminiTranslation(text, mode, (chunk: string) => {
+    const fullText = await streamGeminiTranslation(text, mode, (chunk: string) => {
       for (const char of chunk) {
         charQueue.push(char);
       }
       startSmoothTyping();
     });
 
-    const fullText = await Promise.race([apiPromise, timeoutPromise]);
     appState.modalCache[mode] = fullText;
     log('completado:', fullText.length);
 
