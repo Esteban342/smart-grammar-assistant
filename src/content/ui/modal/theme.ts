@@ -1,5 +1,6 @@
 // src/content/ui/modal/theme.ts
-// Deteccion del tema de la pagina y devolucion de overrides CSS.
+// Deteccion del tema de la pagina y overrides para el tema claro.
+// Base del diseno: dark-first (Void). Override: light.
 
 export type Theme = 'light' | 'dark';
 
@@ -21,7 +22,6 @@ function luminance(color: string): number | null {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
-// Busca el primer ancestro (o el propio) con un fondo visible.
 function findBgUpwards(el: Element | null): string {
   let current: Element | null = el;
   let depth = 0;
@@ -36,14 +36,12 @@ function findBgUpwards(el: Element | null): string {
 
 export function detectTheme(): Theme {
   try {
-    // 1. color-scheme declarado por la pagina (YouTube, X, etc. lo usan).
     const htmlScheme = getComputedStyle(document.documentElement).colorScheme || '';
     if (htmlScheme.includes('dark') && !htmlScheme.includes('light')) return 'dark';
 
     const bodyScheme = getComputedStyle(document.body).colorScheme || '';
     if (bodyScheme.includes('dark') && !bodyScheme.includes('light')) return 'dark';
 
-    // 2. Fondo visible en body, html o algun ancestro cercano.
     const bodyBg = getComputedStyle(document.body).backgroundColor;
     const htmlBg = getComputedStyle(document.documentElement).backgroundColor;
 
@@ -53,12 +51,10 @@ export function detectTheme(): Theme {
     const htmlLum = luminance(htmlBg);
     if (htmlLum !== null) return htmlLum < 0.4 ? 'dark' : 'light';
 
-    // 3. Buscar fondo en ancestros (para youtbe y similares).
     const anyBg = findBgUpwards(document.body);
     const anyLum = luminance(anyBg);
     if (anyLum !== null) return anyLum < 0.4 ? 'dark' : 'light';
 
-    // 4. Respaldo final: media query del sistema operativo.
     if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) return 'dark';
 
     return 'light';
@@ -67,93 +63,99 @@ export function detectTheme(): Theme {
   }
 }
 
-export function getDarkThemeOverrides(menuId: string, modalId: string): string {
+// Overrides para el tema claro. Se inyectan solo cuando la pagina es clara.
+// El diseno base (Void) es oscuro, asi que el claro es el override.
+export function getLightThemeOverrides(menuId: string, modalId: string): string {
   return `
+    /* Menu flotante en paginas claras: Variante 2 "Cristal elevado" */
     #${menuId} {
-      background: #1A2436 !important;
-      color: #E2E8F0 !important;
-      border: 1px solid #2D3A52 !important;
+      background: #FFFFFF !important;
+      border: 1.5px solid #E0DBFF !important;
+      color: #1A1917 !important;
+      box-shadow:
+        0 1px 0 rgba(107, 94, 248, 0.06),
+        0 2px 6px rgba(0, 0, 0, 0.08),
+        0 8px 20px rgba(0, 0, 0, 0.1),
+        0 0 0 3px rgba(107, 94, 248, 0.08) !important;
     }
-    #${menuId} .sa-trigger-icon {
-      color: #E2E8F0 !important;
+    /* Hover: borde, icono y halo en indigo (como el menu expandido) */
+    #${menuId}:hover {
+      border-color: #6B5EF8 !important;
+      background: #FAFAFF !important;
+      box-shadow:
+        0 0 0 4px rgba(107, 94, 248, 0.15),
+        0 4px 10px rgba(107, 94, 248, 0.25),
+        0 12px 28px rgba(107, 94, 248, 0.18),
+        0 0 0 3px rgba(107, 94, 248, 0.12) !important;
     }
-    #${menuId} .sa-action {
-      color: #94A3B8 !important;
+    /* El icono del lapiz se intensifica en hover */
+    #${menuId}:hover .sa-trigger-icon svg {
+      stroke: #5A4EE0 !important;
     }
+    #${menuId} .sa-trigger-icon svg { stroke: #6B5EF8 !important; }
+    #${menuId} .sa-action { color: #7A7470 !important; }
     #${menuId} .sa-action:hover {
-      background: rgba(226, 232, 240, 0.1) !important;
-      color: #E2E8F0 !important;
+      background: rgba(107, 94, 248, 0.08) !important;
+      color: #6B5EF8 !important;
     }
+    #${menuId} .sa-action.sa-humanize:hover { color: #6B5EF8 !important; }
+    #${menuId} .sa-action:active { background: rgba(107, 94, 248, 0.05) !important; }
+    #${menuId} .sa-sep { background: rgba(0, 0, 0, 0.08) !important; }
+
     #${modalId} {
-      background: #1A2436 !important;
-      border-color: #2D3A52 !important;
+      background: #FAFAF9 !important;
+      border-color: #E3DDD6 !important;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 24px 64px rgba(0, 0, 0, 0.12) !important;
     }
-    #${modalId} .sa-modal-title {
-      color: #E2E8F0 !important;
+    #${modalId} .sa-modal-header,
+    #${modalId} .sa-modal-tabs,
+    #${modalId} .sa-grammar-area,
+    #${modalId} .sa-modal-divider { border-color: #E3DDD6 !important; }
+    #${modalId} .sa-modal-badge {
+      background: rgba(107, 94, 248, 0.08) !important;
+      border-color: rgba(107, 94, 248, 0.2) !important;
     }
-    #${modalId} .sa-modal-close {
-      color: #64748B !important;
-    }
+    #${modalId} .sa-modal-title { color: #6B6157 !important; }
+    #${modalId} .sa-modal-close { color: #9C9188 !important; }
     #${modalId} .sa-modal-close:hover {
-      color: #E2E8F0 !important;
+      background: #EDE8E2 !important;
+      color: #2C2826 !important;
     }
-    #${modalId} .sa-modal-tabs {
-      border-bottom-color: #2D3A52 !important;
-    }
-    #${modalId} .sa-modal-tab {
-      color: #94A3B8 !important;
-    }
+    #${modalId} .sa-modal-tab { color: #7A7470 !important; }
     #${modalId} .sa-modal-tab:hover {
-      background: #2D3A52 !important;
-      color: #E2E8F0 !important;
+      background: #F0EDE8 !important;
+      color: #2C2826 !important;
     }
-    #${modalId} .sa-modal-tab.sa-active {
-      background: #E2E8F0 !important;
-      color: #0F1E35 !important;
-    }
-    #${modalId} .sa-modal-output {
-      background: #0F1E35 !important;
-      border-color: #2D3A52 !important;
-      color: #E2E8F0 !important;
-    }
-    #${modalId} .sa-grammar-counter {
-      color: #94A3B8 !important;
-    }
+    #${modalId} .sa-modal-tab.sa-active { color: #2C2826 !important; }
+    #${modalId} .sa-modal-output { color: #2C2826 !important; }
+    #${modalId} .sa-grammar-counter { color: #7A7470 !important; }
     #${modalId} .sa-grammar-apply-all {
-      border-color: #2D3A52 !important;
-      color: #E2E8F0 !important;
+      color: #6B5EF8 !important;
+      border-color: rgba(107, 94, 248, 0.25) !important;
     }
-    #${modalId} .sa-grammar-apply-all:hover {
-      background: #2D3A52 !important;
-      border-color: #E2E8F0 !important;
-    }
+    #${modalId} .sa-grammar-apply-all:hover { background: rgba(107, 94, 248, 0.06) !important; }
     #${modalId} .sa-grammar-suggestion {
-      background: #0F1E35 !important;
-      border-color: #2D3A52 !important;
+      background: #FAFAF9 !important;
+      border-color: #E3DDD6 !important;
     }
     #${modalId} .sa-grammar-suggestion:hover {
-      background: #2D3A52 !important;
+      background: #F0EDE8 !important;
+      border-color: #C8BCB0 !important;
     }
     #${modalId} .sa-grammar-suggestion.sa-applied {
-      background: #142E24 !important;
-      border-color: #1F4E3E !important;
+      background: #F3F8F5 !important;
+      border-color: #B4D6C4 !important;
     }
     #${modalId} .sa-modal-btn {
-      background: #0F1E35 !important;
-      color: #E2E8F0 !important;
-      border-color: #2D3A52 !important;
+      background: #FAFAF9 !important;
+      color: #4A4540 !important;
+      border-color: #D6CFC8 !important;
     }
-    #${modalId} .sa-modal-btn:hover {
-      background: #2D3A52 !important;
-      color: #E2E8F0 !important;
-    }
+    #${modalId} .sa-modal-btn:hover { background: #F0EDE8 !important; color: #2C2826 !important; }
     #${modalId} .sa-modal-btn.sa-primary {
-      background: #E2E8F0 !important;
-      color: #0F1E35 !important;
-      border: none !important;
-    }
-    #${modalId} .sa-modal-btn.sa-primary:hover {
-      background: #FFFFFF !important;
+      background: #6B5EF8 !important;
+      color: #FFFFFF !important;
+      border-color: transparent !important;
     }
   `;
 }

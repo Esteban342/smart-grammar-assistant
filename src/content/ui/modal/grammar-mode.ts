@@ -83,7 +83,7 @@ function renderGrammarArea(container: HTMLElement): void {
           <span class="sa-sug-original">${escapeHtml(s.from)}</span>
           <span class="sa-sug-arrow">a</span>
           <span class="sa-sug-replacement">${escapeHtml(s.to)}</span>
-          <span class="sa-sug-check">✓</span>
+          <span class="sa-sug-check"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6 9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         </div>
       `;
     })

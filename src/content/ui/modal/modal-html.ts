@@ -21,10 +21,15 @@ const REWRITE_TONES = [
   { id: 'creative', label: 'Creativo' },
 ];
 
+const SVG_CLOSE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" stroke-linecap="round"/></svg>`;
+const SVG_COPY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke-linecap="round"/></svg>`;
+const SVG_REFRESH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 9A7 7 0 0 1 17 5l3 2M4 17l3 2a7 7 0 0 0 11.5-4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const SVG_REPLACE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
 function getTitle(mode: string): string {
-  if (mode === 'grammar') return 'Correccion Gramatical';
-  if (mode === 'humanize') return 'Texto Humanizado';
-  return 'Parafrasear Texto';
+  if (mode === 'grammar') return 'Corrector';
+  if (mode === 'humanize') return 'Humanizar';
+  return 'Parafrasear';
 }
 
 function renderTabs(activeMode: string): string {
@@ -50,8 +55,11 @@ export function createModalHtml(
 
   modal.innerHTML = `
     <div class="sa-modal-header" id="sa-modal-drag-handle">
-      <div class="sa-modal-title">${title}</div>
-      <button class="sa-modal-close" id="sa-modal-close" title="Cerrar">X</button>
+      <div class="sa-modal-badge">
+        <div class="sa-modal-badge-dot"></div>
+        <span class="sa-modal-title">${title}</span>
+      </div>
+      <button class="sa-modal-close" id="sa-modal-close" title="Cerrar">${SVG_CLOSE}</button>
     </div>
 
     ${!isHumanizeOnly && !isGrammar ? `<div class="sa-modal-tabs" id="sa-modal-tabs">${renderTabs(mode)}</div>` : ''}
@@ -61,13 +69,12 @@ export function createModalHtml(
     <div id="sa-grammar-area"></div>
 
     <div class="sa-modal-actions">
-      ${editableTarget ? `<button class="sa-modal-btn sa-primary" id="sa-replace-btn">Reemplazar</button>` : ''}
-      <button class="sa-modal-btn" id="sa-copy-btn">Copiar</button>
-      <button class="sa-modal-btn" id="sa-regen-btn">Volver a checar</button>
+      <button class="sa-modal-btn" id="sa-copy-btn">${SVG_COPY} Copiar</button>
+      <button class="sa-modal-btn" id="sa-regen-btn">${SVG_REFRESH} Volver a checar</button>
+      ${editableTarget ? `<button class="sa-modal-btn sa-primary" id="sa-replace-btn">${SVG_REPLACE} Reemplazar</button>` : ''}
     </div>
   `;
 
-  // Registrar tabs
   if (!isHumanizeOnly && !isGrammar) {
     const tabsContainer = modal.querySelector('#sa-modal-tabs');
     tabsContainer?.addEventListener('click', (e) => {
@@ -77,7 +84,6 @@ export function createModalHtml(
     });
   }
 
-  // Registrar botones
   if (editableTarget && callbacks.onReplace) {
     modal.querySelector('#sa-replace-btn')?.addEventListener('click', callbacks.onReplace);
   }
