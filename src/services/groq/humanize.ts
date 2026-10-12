@@ -2,10 +2,12 @@
 // Funciones para humanizar y parafrasear texto.
 
 import { streamCompletion } from './client';
-import { buildRewritePrompt, REWRITE_SYSTEM_PROMPT } from './prompts';
+import { buildRewritePrompt, REWRITE_SYSTEM_PROMPT, getTemperatureForMode } from './prompts';
 import { getCachedResult, setCachedResult } from '../cache';
 
-const REWRITE_MODEL = 'openai/gpt-oss-120b';
+// Modelo Qwen 3.8 27B: mejor seguimiento de instrucciones que gpt-oss-120b
+// para tareas de reescritura y textos largos.
+const REWRITE_MODEL = 'qwen/qwen3.8-27b';
 
 export async function streamRewrite(
   text: string,
@@ -27,7 +29,7 @@ export async function streamRewrite(
       model: REWRITE_MODEL,
       systemPrompt: REWRITE_SYSTEM_PROMPT,
       userPrompt: prompt,
-      temperature: 0.7,
+      temperature: getTemperatureForMode(mode),
       maxTokens: 2048
     },
     onChunk
