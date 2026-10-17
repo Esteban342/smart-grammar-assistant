@@ -2,74 +2,73 @@
 
 export type RewriteMode = 'humanize' | 'standard' | 'formal' | 'academic' | 'simple' | 'creative';
 
-// ─── SYSTEM PROMPT ───────────────────────────────────────────────────────────
-// Persona concreta + reglas con sus sustitutos. Sin "en español" hardcodeado.
-export const REWRITE_SYSTEM_PROMPT = `Eres un editor profesional de textos con experiencia. Reescribes con precision y naturalidad.
+export const REWRITE_SYSTEM_PROMPT =
+`Eres una herramienta de reformulacion de texto. Tu trabajo es cambiar como se dice algo, no mejorar lo que dice.
 
-IDIOMA: Detecta el idioma del texto original y responde siempre en ese mismo idioma.
+IDIOMA: Responde en el mismo idioma del original.
 
-NOMBRES: Copia exactamente los nombres propios, fechas y cifras del original. Nunca los sustituyas por descripciones genericas ("Magallanes" nunca es "el explorador", "el lider" ni "el navegante").
+PERSONA: Copia exactamente la persona gramatical. Si el original tiene "yo/me/mi", el resultado tambien. Si no los tiene, no los uses.
 
-FIDELIDAD: Solo reformula lo que esta en el original. No añadas contexto, interpretaciones ni conclusiones que no esten.
+VERBOS: No sustituyas verbos. Si el original dice "pase", el resultado dice "pase" o un sinonimo directo. No cambies "pase" por "converti", "traslade" ni "traduje".
 
-VOCABULARIO: Escribe como un periodico, no como un ensayo. Sustituye:
-- "asimismo" -> "tambien"
-- "cabe destacar" -> di directamente lo que destacas
-- "constituyo" -> "fue"
-- "resulta fundamental" -> "es clave"
-- "en definitiva" -> "al final"
-- "en el ambito de" -> "en"
-- "es importante señalar" -> suprímelo o di directamente lo que quieres señalar
+TIEMPO: Manten el tiempo verbal de cada frase sin excepcion. Pasado -> pasado. Presente -> presente.
 
-RITMO: Alterna frases cortas (5-10 palabras) con largas (20-30). No pongas dos frases seguidas del mismo tamaño.
+NOMBRES: Copia exactamente nombres propios, fechas y cifras.
 
-Devuelve solo el texto reescrito. Sin comillas ni notas.`;
+FIDELIDAD: Reformula solo lo que esta escrito. No añadas, no interpretes, no resumas. Extension similar al original.
 
-// ─── INSTRUCCIONES POR MODO ─────────────────────────────────────────────────
+VOCABULARIO: Sustituye: "asimismo"->"tambien"; "constituyo"->"fue"; "en definitiva"->"al final"; "resulta fundamental"->"es clave"; "cabe destacar"-> di directamente lo que destacas.
+
+RITMO: Alterna frases cortas (5-10 palabras) con largas (20-30). Maximo dos frases cortas seguidas.
+
+Devuelve solo el texto reformulado. Sin comillas.`;
 
 const REWRITE_INSTRUCTIONS: Record<RewriteMode, string> = {
 
+  // Instruccion que describe el estado final en vez de la operacion.
+  // Evita que el modelo interprete "mejora legibilidad" como "cortar frases".
   humanize:
-    'Reescribe como lo escribiria un buen periodista para sus lectores: fluido y directo. ' +
-    'Agrupa las ideas relacionadas en frases mas amplias cuando encajen juntas; ' +
-    'no separes en microfrases lo que puede ir en una sola. ' +
-    'Maximo dos frases cortas seguidas.',
+    'Reescribe de forma que suene como prosa escrita por una persona, ' +
+    'no como una lista de hechos. ' +
+    'La estructura de parrafos del original se respeta: ' +
+    'si es un parrafo, el resultado es un parrafo. ' +
+    'Las ideas que el original conecta en una sola frase larga ' +
+    'permanecen en una sola frase, no las separes. ' +
+    'Cambia el vocabulario y el orden de las palabras, ' +
+    'pero no la arquitectura del texto.',
 
   standard:
-    'Parafrasea cambiando la estructura y las palabras. No sustituyas nombres propios por descripciones genericas. No añadas nada que no este en el original.',
+    'Reformula cambiando la estructura de las frases. Manten el significado exacto.',
 
   formal:
-    'Reescribe con tono profesional y preciso. Sin adornos retoricos: di lo que hay que decir, sin relleno.',
+    'Reformula con tono profesional y preciso. Sin relleno retorico.',
 
   academic:
-    'Reescribe con rigor conceptual. Usa vocabulario tecnico solo donde aporte precision real, no como decoracion.',
+    'Reformula con rigor conceptual. Vocabulario tecnico solo donde aporte precision real.',
 
   simple:
-    'Reescribe para cualquier lector sin conocimiento previo. Frases cortas. Una idea por frase. Palabras cotidianas.',
+    'Reformula para cualquier lector. Frases cortas. Palabras cotidianas.',
 
   creative:
-    'Reescribe con personalidad y ritmo propio. Puedes cambiar el orden de las ideas si fluye mejor.',
+    'Reformula con personalidad y ritmo propio. Puedes cambiar el orden de las ideas.',
 };
 
-// ─── TEMPERATURA POR MODO ────────────────────────────────────────────────────
 const MODE_TEMPERATURES: Record<string, number> = {
-  humanize: 0.85,
-  standard: 0.70,
-  formal:   0.55,
-  academic: 0.55,
-  simple:   0.70,
-  creative: 0.90,
+  humanize:  0.70,
+  standard:  0.60,
+  formal:    0.50,
+  academic:  0.50,
+  simple:    0.60,
+  creative:  0.80,
 };
 
 export function getTemperatureForMode(mode: string): number {
-  return MODE_TEMPERATURES[mode] ?? 0.70;
+  return MODE_TEMPERATURES[mode] ?? 0.60;
 }
 
-// ─── BUILDER ─────────────────────────────────────────────────────────────────
 export function buildRewritePrompt(text: string, mode: string): string {
   const instruction =
     REWRITE_INSTRUCTIONS[mode as RewriteMode] || REWRITE_INSTRUCTIONS.standard;
-
   return `${instruction}
 
 """
@@ -77,7 +76,6 @@ ${text}
 """`;
 }
 
-// ─── GRAMMAR SYSTEM PROMPT ───────────────────────────────────────────────────
 export const GRAMMAR_SYSTEM_PROMPT = `Eres un corrector profesional. Detecta el idioma del texto original y responde SIEMPRE en ese mismo idioma.
 
 Reglas generales:

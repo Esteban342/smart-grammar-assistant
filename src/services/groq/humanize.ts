@@ -5,8 +5,6 @@ import { streamCompletion } from './client';
 import { buildRewritePrompt, REWRITE_SYSTEM_PROMPT, getTemperatureForMode } from './prompts';
 import { getCachedResult, setCachedResult } from '../cache';
 
-// Modelo Qwen 3.8 27B: mejor seguimiento de instrucciones que gpt-oss-120b
-// para tareas de reescritura y textos largos.
 const REWRITE_MODEL = 'qwen/qwen3.8-27b';
 
 export async function streamRewrite(
@@ -30,7 +28,8 @@ export async function streamRewrite(
       systemPrompt: REWRITE_SYSTEM_PROMPT,
       userPrompt: prompt,
       temperature: getTemperatureForMode(mode),
-      maxTokens: 2048
+      maxTokens: 2048,
+      reasoningEffort: 'none'
     },
     onChunk
   );

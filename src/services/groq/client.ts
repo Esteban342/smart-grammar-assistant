@@ -1,6 +1,5 @@
 // src/services/groq/client.ts
 // Cliente base para llamar a la API de Groq con streaming SSE.
-// Incluye reintentos automaticos y timeout dinamico segun longitud del texto.
 
 async function getGroqApiKey(): Promise<string> {
   const storage = (globalThis as any).chrome?.storage?.local;
@@ -28,9 +27,9 @@ export interface StreamOptions {
   userPrompt: string;
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
 }
 
-// Informacion extraida del error para decidir si reintentar.
 interface ErrorInfo {
   isRateLimit: boolean;
   isDailyLimit: boolean;
@@ -41,27 +40,22 @@ interface ErrorInfo {
 const MAX_RETRIES = 2;
 const FALLBACK_BACKOFF_SECONDS = [2, 4];
 
-// Calcula el timeout en milisegundos segun la longitud del texto.
-// Textos cortos no necesitan esperar 60 segundos.
 function computeTimeoutMs(textLength: number): number {
   if (textLength < 500) return 15000;
   if (textLength < 1500) return 30000;
   return 60000;
 }
 
-// Clasifica el error de la respuesta para saber si vale la pena reintentar.
 function classifyError(response: Response, errorBody: any): ErrorInfo {
   const isRateLimit = response.status === 429;
   const message = errorBody?.error?.message || `Error HTTP ${response.status}`;
   const lower = message.toLowerCase();
 
-  // Groq distingue limites diarios de los por minuto con estas palabras.
   const isDailyLimit = isRateLimit && (
     lower.includes('per day') ||
     lower.includes('daily')
   );
 
-  // Algunos errores incluyen el header retry-after con los segundos de espera.
   let retryDelaySeconds: number | null = null;
   const retryAfter = response.headers.get('retry-after');
   if (retryAfter) {
@@ -72,7 +66,6 @@ function classifyError(response: Response, errorBody: any): ErrorInfo {
   return { isRateLimit, isDailyLimit, retryDelaySeconds, message };
 }
 
-// Realiza una sola llamada con streaming. Si excede el timeout, aborta.
 async function streamOnce(
   options: StreamOptions,
   onChunk: (chunk: string) => void,
@@ -86,6 +79,24 @@ async function streamOnce(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
+  const body: Record<string, unknown> = {
+    model: options.model,
+    messages: [
+      { role: 'system', content: options.systemPrompt },
+      { role: 'user', content: options.userPrompt }
+    ],
+    temperature: options.temperature ?? 0.65,
+    max_tokens: options.maxTokens ?? 2048,
+    stream: true
+  };
+
+  // reasoning_effort solo se envia si esta definido. Groq lo acepta
+  // con 'none' para desactivar el modo thinking de qwen3.8-27b.
+  // No usar chat_template_kwargs: Groq no lo soporta.
+  if (options.reasoningEffort !== undefined) {
+    body.reasoning_effort = options.reasoningEffort;
+  }
+
   let response: Response;
   try {
     response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -94,16 +105,7 @@ async function streamOnce(
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: options.model,
-        messages: [
-          { role: 'system', content: options.systemPrompt },
-          { role: 'user', content: options.userPrompt }
-        ],
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.maxTokens ?? 2048,
-        stream: true
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     });
   } catch (err: any) {
@@ -166,8 +168,6 @@ async function streamOnce(
   return fullText || '';
 }
 
-// Ejecuta una llamada con streaming. Si Groq devuelve un error de
-// rate limit temporal, reintenta con espera progresiva.
 export async function streamCompletion(
   options: StreamOptions,
   onChunk: (chunk: string) => void
@@ -186,12 +186,10 @@ export async function streamCompletion(
         throw err;
       }
 
-      // Si es limite diario, esperar no sirve. Se libera al dia siguiente.
       if (info.isDailyLimit) {
         throw new Error('Limite diario de Groq alcanzado. Vuelve a intentarlo mañana o usa otra API Key.');
       }
 
-      // Si ya no quedan reintentos, lanzar el error original.
       if (attempt === MAX_RETRIES) {
         throw new Error('Limite de cuota temporal alcanzado. Espera un minuto y vuelve a intentarlo.');
       }
