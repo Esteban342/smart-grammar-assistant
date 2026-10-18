@@ -3,7 +3,6 @@
 // Orquesta el menu flotante, el modal y los modos de contenido.
 
 import { getOwnShadowRoot } from '../shadow';
-import { ensureSpinnerStyles } from '../components';
 import { ensureStyles, MODAL_ID } from './styles';
 import { appState } from './state';
 import { showFloatingMenu as showFloatingMenuBase, hideFloatingMenu, removeFloatingMenu } from './floating-menu';
@@ -15,14 +14,11 @@ import { runGrammarMode } from './grammar-mode';
 import { replaceTextInPage } from '../../replacer';
 import { forceCaptureSelectionViaCopy, getLastDocsClipboardText, looksLikeDocsInternalId } from '../../docs-canvas';
 import { SA_DEBUG } from '../../selection';
-
+import { ensureSpinnerStyles, renderLongTextWarningHTML } from '../components';
 function log(...args: unknown[]): void {
   if (SA_DEBUG) console.log('[SA:modal]', ...args);
 }
-
-// ============================================================
-// Re-exports publicos
-// ============================================================
+const MAX_CHARS_WARNING = 3000;
 
 export { hideFloatingMenu, removeFloatingMenu };
 
@@ -110,12 +106,9 @@ function openModal(originalText: string, mode: string, editableTarget: any): voi
       }
     },
     onRegen: () => {
-      if (appState.isProcessing) return;
-      const outputEl = root.getElementById('sa-modal-output');
-      const currentText = outputEl?.innerText || originalText;
       delete appState.modalCache[mode];
       appState.grammarState = null;
-      loadContent(currentText, mode, root, isGrammar);
+      loadContent(originalText, mode, root, isGrammar);
     },
     onReplace: editableTarget
       ? async () => {
@@ -177,6 +170,45 @@ function loadContent(
   if (text.startsWith('No se pudo leer')) {
     outputDiv.innerText = text;
     return;
+  }
+
+      // ─── CONTROL DE TEXTO LARGO ──────────────────────────────────────────────
+  if (text.length > MAX_CHARS_WARNING) {
+    log('texto excede el limite, mostrando advertencia', text.length);
+    
+    // 1. Ocultamos los botones de abajo para ganar espacio vertical
+    const actionsArea = root.querySelector('.sa-modal-actions') as HTMLElement;
+    if (actionsArea) actionsArea.style.setProperty('display', 'none', 'important');
+
+    // 2. Mostramos la advertencia
+    outputDiv.innerHTML = renderLongTextWarningHTML(text.length);
+    
+    // 3. Forzamos al contenedor a quitarse el relleno y adaptarse sin scroll
+    outputDiv.style.setProperty('padding', '0', 'important');
+    outputDiv.style.setProperty('max-height', 'none', 'important');
+    outputDiv.style.setProperty('min-height', '160px', 'important');
+    outputDiv.style.setProperty('overflow-y', 'hidden', 'important');
+
+    outputDiv.querySelector('#sa-cancel-long')?.addEventListener('click', () => {
+      removeExistingModal();
+    });
+
+    outputDiv.querySelector('#sa-confirm-long')?.addEventListener('click', () => {
+      // 4. Restauramos todo a la normalidad para que la IA escriba
+      if (actionsArea) actionsArea.style.setProperty('display', 'flex', 'important');
+      outputDiv.style.setProperty('padding', '18px 20px', 'important');
+      outputDiv.style.setProperty('max-height', '190px', 'important');
+      outputDiv.style.setProperty('overflow-y', 'auto', 'important');
+      
+      outputDiv.innerHTML = ''; 
+      if (isGrammar) {
+        void runGrammarMode(text, outputDiv, grammarArea);
+      } else {
+        void runRewriteMode(text, mode, outputDiv);
+      }
+    });
+
+    return; 
   }
 
   if (isGrammar) {

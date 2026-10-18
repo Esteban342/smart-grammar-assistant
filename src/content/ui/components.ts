@@ -48,3 +48,20 @@ export function renderApiKeyErrorHTML(): string {
     </div>
   `;
 }
+// Genera la pantalla de advertencia cuando el usuario selecciona
+// un texto demasiado largo (mas de 3000 caracteres).
+export function renderLongTextWarningHTML(charCount: number): string {
+  return `
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; height: 100%; width: 100%; box-sizing: border-box;">
+      <div style="font-size: 24px; margin-bottom: 6px;">⚠️</div>
+      <strong style="color: #E05C52; font-size: 14px; margin-bottom: 6px;">El texto es muy largo</strong>
+      <p style="font-size: 12px; line-height: 1.4; color: #64748B; margin-bottom: 20px; max-width: 320px;">
+        Has seleccionado ${charCount.toLocaleString()} caracteres. Procesar esto puede tardar un minuto y consumir más cuota.
+      </p>
+      <div style="display: flex; gap: 8px; width: 100%; max-width: 260px; justify-content: center;">
+        <button id="sa-cancel-long" class="sa-modal-btn" style="flex: 1; padding: 8px 10px; font-size: 12px; white-space: nowrap;">Cancelar</button>
+        <button id="sa-confirm-long" class="sa-modal-btn sa-primary" style="flex: 1; padding: 8px 10px; font-size: 12px; white-space: nowrap;">Procesar igual</button>
+      </div>
+    </div>
+  `;
+}
