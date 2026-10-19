@@ -3,21 +3,30 @@
 
 async function getGroqApiKey(): Promise<string> {
   const storage = (globalThis as any).chrome?.storage?.local;
-  if (storage) {
-    const allData = await storage.get(null);
-    const directKey =
-      allData.groq_api_key ||
-      allData.groqApiKey ||
-      allData.groqKey;
+  if (!storage) return '';
+
+  try {
+    // Envolvemos storage.get en una Promise para asegurar compatibilidad
+    // con todos los navegadores basados en Chromium.
+    const allData = await new Promise<Record<string, any>>((resolve) => {
+      storage.get(null, (items: Record<string, any>) => resolve(items || {}));
+    });
+
+    const directKey = allData.groq_api_key || allData.groqApiKey || allData.groqKey;
     if (typeof directKey === 'string' && directKey.trim()) {
       return directKey.trim();
     }
+    
+    // Fallback: buscar cualquier string que empiece con gsk_
     for (const val of Object.values(allData)) {
       if (typeof val === 'string' && val.trim().startsWith('gsk_')) {
         return val.trim();
       }
     }
+  } catch (error) {
+    console.error('[SA:client] Error al leer el almacenamiento:', error);
   }
+
   return '';
 }
 
@@ -90,9 +99,6 @@ async function streamOnce(
     stream: true
   };
 
-  // reasoning_effort solo se envia si esta definido. Groq lo acepta
-  // con 'none' para desactivar el modo thinking de qwen3.8-27b.
-  // No usar chat_template_kwargs: Groq no lo soporta.
   if (options.reasoningEffort !== undefined) {
     body.reasoning_effort = options.reasoningEffort;
   }
@@ -161,6 +167,28 @@ async function streamOnce(
         }
       }
     }
+
+    // FIX: Procesar el remanente del buffer al terminar el stream.
+    // A veces la ultima palabra de la IA se queda aqui y se perdia.
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed.startsWith('data: ')) {
+        const jsonStr = trimmed.replace(/^data:\s*/, '');
+        if (jsonStr !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const chunkText = parsed.choices?.[0]?.delta?.content || '';
+            if (chunkText) {
+              fullText += chunkText;
+              onChunk(chunkText);
+            }
+          } catch {
+            // Ignorar si el ultimo trozo no es JSON valido
+          }
+        }
+      }
+    }
+
   } finally {
     clearTimeout(timeoutId);
   }

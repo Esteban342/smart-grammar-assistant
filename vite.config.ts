@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [
@@ -18,9 +21,9 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        popup: resolve(import.meta.dirname, 'src/popup/index.html'),
-        background: resolve(import.meta.dirname, 'src/background/index.ts'),
-        content: resolve(import.meta.dirname, 'src/content/index.ts') 
+        popup: resolve(__dirname, 'src/popup/index.html'),
+        background: resolve(__dirname, 'src/background/index.ts'),
+        content: resolve(__dirname, 'src/content/index.ts') 
       },
       output: {
         entryFileNames: 'src/[name]/index.js',
