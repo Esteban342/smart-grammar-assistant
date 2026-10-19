@@ -1,26 +1,29 @@
 # Smart Grammar Assistant
 
-Smart Grammar Assistant es una extensión de Chrome (Manifest V3) que humaniza, parafrasea y corrige texto seleccionado en cualquier página web. Está construida en TypeScript y utiliza modelos de lenguaje para las tres tareas principales.
+Smart Grammar Assistant es una extensión de Chrome (Manifest V3) diseñada para mejorar la escritura directamente en cualquier página web. Utiliza modelos de lenguaje para humanizar, parafrasear y corregir texto. La arquitectura del proyecto está pensada para ser agnóstica al proveedor de Inteligencia Artificial, permitiendo integrar diferentes APIs (como Groq, OpenAI, Gemini, etc.) en el futuro.
+
+Actualmente, el proyecto está configurado y optimizado para usar la API de **Groq**.
 
 ## Estado del proyecto
 
-La extensión funciona completa en las siguientes plataformas:
+La extensión funciona correctamente en las siguientes plataformas:
 
 - Wikipedia y webs con DOM estándar.
 - Google Docs, con captura vía iframe interno y reemplazo asistido por `chrome.debugger`.
 - Notion, Canva y Figma (interfaz).
-
-El modo Corregir usa Qwen con diff local. Los modos Humanizar y Parafrasear usan GPT-OSS-120B con streaming SSE.
+- ChatGPT Web.
 
 Las siguientes plataformas no están soportadas por limitaciones del navegador o del sitio:
 
 - Gemini Web, por su política estricta de CSP.
-- ChatGPT y DeepSeek, por el uso de shadow DOM cerrado.
+- DeepSeek, por el uso de shadow DOM cerrado.
 - Figma canvas, por renderizar el texto como imagen.
+
+Los tres modos (Humanizar, Parafrasear y Corregir) utilizan el modelo Qwen (qwen/qwen3.8-27b) con streaming SSE para mostrar el texto en tiempo real. El modo Corregir utiliza además un algoritmo de diff local para mostrar los cambios de forma clicable.
 
 ## Estructura del proyecto
 
-```
+```text
 src/
 ├── background/
 │   ├── index.ts              Punto de entrada del service worker
@@ -48,7 +51,7 @@ src/
 │   │   └── standard.ts       Reemplazo estandar
 │   ├── ui/
 │   │   ├── shadow.ts         Shadow host aislado
-│   │   ├── components.ts     Spinner y errores
+│   │   ├── components.ts     Spinner, errores y avisos visuales
 │   │   └── modal/
 │   │       ├── index.ts      Orquestador del modal
 │   │       ├── types.ts      Tipos del modal
@@ -91,13 +94,11 @@ Cada carpeta tiene una responsabilidad clara:
 - Una API Key de Groq obtenida en console.groq.com/keys.
 
 ### Instalar y compilar
+- git clone https://github.com/Esteban342/smart-grammar-assistant.git
+- cd smart-grammar-assistant
+- npm install
+- npm run build
 
-```
-git clone https://github.com/Esteban342/smart-grammar-assistant.git
-cd smart-grammar-assistant
-npm install
-npm run build
-```
 
 ### Cargar en el navegador
 
@@ -121,32 +122,35 @@ Seleccionar texto en cualquier pagina. Aparece un boton circular junto a la sele
 
 El resultado aparece en un modal centrado. Desde ahi se puede reemplazar el texto original, copiarlo al portapapeles o volver a analizarlo.
 
+**Aviso de seleccion larga:** Si el usuario selecciona un texto superior a los 3,000 caracteres (aproximadamente una pagina densa), el modal mostrara una advertencia antes de procesar. Esto evita consumir la cuota de la API innecesariamente y previene tiempos de espera prolongados.
+
 Tambien se puede usar el menu del clic derecho sobre texto seleccionado para abrir directamente el modal.
 
 ## Desarrollo
 
 Comandos disponibles:
 
-```
-npm run build     Compila el proyecto a dist/
-npm run dev       Inicia el modo de desarrollo con Vite
-```
+- npm run build Compila el proyecto a dist/
+- npm run dev Inicia el modo de desarrollo con Vite
 
 Despues de compilar, es necesario recargar la extension en chrome://extensions/ y refrescar las pestañas donde se este probando.
 
-## Modelos usados
+## Modelos e Integraciones de IA
 
-La extension utiliza dos modelos de Groq segun la tarea:
+El proyecto esta disenado bajo una arquitectura modular que permite conectar distintas APIs de lenguaje. Actualmente, la implementacion por defecto utiliza **Groq**.
 
-- openai/gpt-oss-120b para humanizar y parafrasear.
-- qwen/qwen3.8-27b para corregir gramatica.
+**Recomendacion de Groq:**
+Se recomienda encarecidamente el uso de Groq para el desarrollo y uso general de la extension por dos motivos principales:
+1. **Velocidad de respuesta:** Groq utiliza LPUs (Language Processing Units) que ofrecen una velocidad de generacion de texto significativamente mayor que otras APIs.
+2. **Cuota gratuita:** Groq ofrece un limite gratuito muy generoso (30 peticiones por minuto y 1,000 por dia), lo que permite probar y usar la extension de forma intensiva sin costes iniciales.
 
-Groq aplica un limite gratuito de 30 peticiones por minuto y 1,000 por dia. Si se supera, la extension muestra un aviso de cuota alcanzada.
+Modelo actual configurado:
+- `qwen/qwen3.8-27b`: Utilizado para humanizar, parafrasear y corregir gramatica.
 
 ## Ramas de trabajo
 
-- main contiene la version estable.
-- feature/gemini-api-integration contiene el desarrollo en curso.
+- `main` contiene la version estable.
+- `feature/active-development` contiene el desarrollo en curso.
 
 Los cambios se integran a main mediante Pull Requests.
 
