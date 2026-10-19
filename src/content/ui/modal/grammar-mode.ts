@@ -150,7 +150,8 @@ function refreshGrammarView(): void {
 export async function runGrammarMode(
   text: string,
   outputDiv: HTMLElement,
-  grammarArea: HTMLElement | null
+  grammarArea: HTMLElement | null,
+  signal?: AbortSignal
 ): Promise<void> {
   appState.isProcessing = true;
 
@@ -200,7 +201,7 @@ export async function runGrammarMode(
     correctedText = await correctTextWithQwen(cleanText, (chunk: string) => {
       for (const char of chunk) charQueue.push(char);
       startSmoothTyping();
-    });
+    }, signal);
 
     if (!isTyping) {
       outputDiv.innerText = correctedText;

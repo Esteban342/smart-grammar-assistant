@@ -37,6 +37,7 @@ export interface StreamOptions {
   temperature?: number;
   maxTokens?: number;
   reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
+  signal?: AbortSignal;
 }
 
 interface ErrorInfo {
@@ -88,6 +89,12 @@ async function streamOnce(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
+
+  if (options.signal) {
+    if (options.signal.aborted) controller.abort();
+    else options.signal.addEventListener('abort', () => controller.abort());
+  } 
+
   const body: Record<string, unknown> = {
     model: options.model,
     messages: [
@@ -117,6 +124,10 @@ async function streamOnce(
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err?.name === 'AbortError') {
+      // Si el usuario cancelo desde el modal, relanzamos el error original
+      if (options.signal?.aborted) {
+        throw err;
+      }
       throw new Error('La conexion con Groq excedio el tiempo de espera. Intenta de nuevo.');
     }
     throw err;

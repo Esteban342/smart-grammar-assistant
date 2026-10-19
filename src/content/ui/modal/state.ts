@@ -9,6 +9,7 @@ export interface AppState {
   currentTypingInterval: ReturnType<typeof setInterval> | null;
   currentOptions: FloatingMenuOptions | null;
   grammarState: GrammarState | null;
+  currentAbortController: AbortController | null;
 }
 
 export const appState: AppState = {
@@ -17,4 +18,5 @@ export const appState: AppState = {
   currentTypingInterval: null,
   currentOptions: null,
   grammarState: null,
+  currentAbortController: null,
 };

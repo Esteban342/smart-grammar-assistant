@@ -14,7 +14,8 @@ function log(...args: unknown[]): void {
 export async function runRewriteMode(
   text: string,
   mode: string,
-  outputDiv: HTMLElement
+  outputDiv: HTMLElement,
+  signal?: AbortSignal
 ): Promise<void> {
   if (appState.modalCache[mode]) {
     outputDiv.innerText = appState.modalCache[mode];
@@ -57,7 +58,7 @@ export async function runRewriteMode(
         charQueue.push(char);
       }
       startSmoothTyping();
-    });
+    },signal);
 
     appState.modalCache[mode] = fullText;
     log('completado:', fullText.length);
@@ -71,6 +72,9 @@ export async function runRewriteMode(
       hasClearedSpinner = true;
     }
   } catch (error: any) {
+    if (error?.name === 'AbortError' || error?.message?.includes('abort') || String(error).includes('AbortError')) {
+      return;
+    }
     console.error('[Smart Assistant Error]:', error);
     if (appState.currentTypingInterval) {
       clearInterval(appState.currentTypingInterval);

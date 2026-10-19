@@ -9,7 +9,8 @@ const GRAMMAR_MODEL = 'qwen/qwen3.8-27b';
 
 export async function correctWithQwen(
   text: string,
-  onChunk: (chunk: string) => void
+  onChunk: (chunk: string) => void,
+  signal?: AbortSignal
 ): Promise<string> {
   // 1. Intentar leer del cache
   const cached = await getCachedResult(text, 'grammar');
@@ -25,7 +26,8 @@ export async function correctWithQwen(
       systemPrompt: GRAMMAR_SYSTEM_PROMPT,
       userPrompt: text,
       temperature: 0,
-      maxTokens: 2048
+      maxTokens: 2048,
+      signal: signal
     },
     onChunk
   );
