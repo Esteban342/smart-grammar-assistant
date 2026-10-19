@@ -10,7 +10,8 @@ const REWRITE_MODEL = 'qwen/qwen3.8-27b';
 export async function streamRewrite(
   text: string,
   mode: string,
-  onChunk: (chunk: string) => void
+  onChunk: (chunk: string) => void,
+  signal?: AbortSignal
 ): Promise<string> {
   // 1. Intentar leer del cache
   const cached = await getCachedResult(text, mode);
@@ -29,7 +30,8 @@ export async function streamRewrite(
       userPrompt: prompt,
       temperature: getTemperatureForMode(mode),
       maxTokens: 2048,
-      reasoningEffort: 'none'
+      reasoningEffort: 'none',
+      signal: signal
     },
     onChunk
   );

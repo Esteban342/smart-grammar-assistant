@@ -172,6 +172,7 @@ function loadContent(
     return;
   }
 
+
       // ─── CONTROL DE TEXTO LARGO ──────────────────────────────────────────────
   if (text.length > MAX_CHARS_WARNING) {
     log('texto excede el limite, mostrando advertencia', text.length);
@@ -200,21 +201,32 @@ function loadContent(
       outputDiv.style.setProperty('max-height', '190px', 'important');
       outputDiv.style.setProperty('overflow-y', 'auto', 'important');
       
-      outputDiv.innerHTML = ''; 
+            outputDiv.innerHTML = ''; 
+      
+      // --- NUEVO: Creamos el controlador de cancelación ---
+      if (appState.currentAbortController) appState.currentAbortController.abort();
+      appState.currentAbortController = new AbortController();
+      const signal = appState.currentAbortController.signal;
+
       if (isGrammar) {
-        void runGrammarMode(text, outputDiv, grammarArea);
+        void runGrammarMode(text, outputDiv, grammarArea, signal);
       } else {
-        void runRewriteMode(text, mode, outputDiv);
+        void runRewriteMode(text, mode, outputDiv, signal);
       }
     });
 
     return; 
   }
 
+  // --- NUEVO: Creamos el controlador de cancelación ---
+  if (appState.currentAbortController) appState.currentAbortController.abort();
+  appState.currentAbortController = new AbortController();
+  const signal = appState.currentAbortController.signal;
+
   if (isGrammar) {
-    void runGrammarMode(text, outputDiv, grammarArea);
+    void runGrammarMode(text, outputDiv, grammarArea, signal);
   } else {
-    void runRewriteMode(text, mode, outputDiv);
+    void runRewriteMode(text, mode, outputDiv, signal);
   }
 }
 
@@ -226,6 +238,12 @@ function clearCacheIfNewText(text: string): void {
 }
 
 function removeExistingModal(): void {
+  // --- NUEVO: Abortar la petición a la API si está en curso ---
+  if (appState.currentAbortController) {
+    appState.currentAbortController.abort();
+    appState.currentAbortController = null;
+  }
+
   if (appState.currentTypingInterval) {
     clearInterval(appState.currentTypingInterval);
     appState.currentTypingInterval = null;
