@@ -52,6 +52,8 @@ export function createModalHtml(
 
   const modal = document.createElement('div');
   modal.id = MODAL_ID;
+  modal.tabIndex = -1;
+  modal.style.outline = 'none';
 
   modal.innerHTML = `
     <div class="sa-modal-header" id="sa-modal-drag-handle">

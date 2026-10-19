@@ -139,6 +139,7 @@ function openModal(originalText: string, mode: string, editableTarget: any): voi
 
   const modal = createModalHtml(mode, editableTarget, callbacks);
   root.appendChild(modal);
+  modal.focus();
 
   requestAnimationFrame(() => {
     modal.classList.add('sa-modal-visible');
