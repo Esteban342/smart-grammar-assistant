@@ -1,4 +1,4 @@
-export const SA_DEBUG = true;
+export const SA_DEBUG = import.meta.env.DEV;
 
 function log(...args: unknown[]): void {
   if (SA_DEBUG) console.log('[SA:selection]', ...args);
