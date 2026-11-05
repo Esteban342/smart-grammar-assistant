@@ -1,5 +1,5 @@
 # Smart Grammar Assistant
-
+  
 Smart Grammar Assistant es una extensión de Chrome (Manifest V3) diseñada para mejorar la escritura directamente en cualquier página web. Utiliza modelos de lenguaje para humanizar, parafrasear y corregir texto. La arquitectura del proyecto está pensada para ser agnóstica al proveedor de Inteligencia Artificial, permitiendo integrar diferentes APIs (como Groq, OpenAI, Gemini, etc.) en el futuro.
 
 Actualmente, el proyecto está configurado y optimizado para usar la API de **Groq**.
