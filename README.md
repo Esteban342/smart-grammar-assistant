@@ -164,4 +164,4 @@ Los cambios se integran a main mediante Pull Requests.
 
 ## Licencia
 
-MIT. Consultar el archivo LICENSE para mas detalles.
+MIT. Consultar el archivo LICENSE para mas detalles.    
