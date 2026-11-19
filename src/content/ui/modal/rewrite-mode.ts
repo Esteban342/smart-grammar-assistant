@@ -15,7 +15,8 @@ export async function runRewriteMode(
   text: string,
   mode: string,
   outputDiv: HTMLElement,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  skipCache = false
 ): Promise<void> {
   if (appState.modalCache[mode]) {
     outputDiv.innerText = appState.modalCache[mode];
@@ -58,7 +59,7 @@ export async function runRewriteMode(
         charQueue.push(char);
       }
       startSmoothTyping();
-    },signal);
+    },signal, skipCache);
 
     appState.modalCache[mode] = fullText;
     log('completado:', fullText.length);

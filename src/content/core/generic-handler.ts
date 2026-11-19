@@ -13,7 +13,7 @@ export function handleGenericSelection(
   x: number,
   y: number,
   immediateSelection: string,
-  dragDistance: number
+  _dragDistance: number
 ): void {
   const { chain } = resolveDeepTarget(x, y);
   let text = readSelectedText(chain).trim();
@@ -27,12 +27,9 @@ export function handleGenericSelection(
   }
 
   if (text.length === 0) {
-    if (dragDistance < 5) {
-      log('sin texto y sin arrastre -> ocultando menu');
-      hideFloatingMenu();
-      return;
-    }
-    log('sin texto pero hubo arrastre -> abriendo menu de todos modos');
+    log('sin texto seleccionado -> ocultando menu');
+    hideFloatingMenu();
+    return;
   }
 
   const activeEl = document.activeElement;

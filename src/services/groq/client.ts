@@ -6,22 +6,14 @@ async function getGroqApiKey(): Promise<string> {
   if (!storage) return '';
 
   try {
-    // Envolvemos storage.get en una Promise para asegurar compatibilidad
-    // con todos los navegadores basados en Chromium.
-    const allData = await new Promise<Record<string, any>>((resolve) => {
-      storage.get(null, (items: Record<string, any>) => resolve(items || {}));
+    const keys = ['groq_api_key', 'groqApiKey', 'groqKey'];
+    const data = await new Promise<Record<string, any>>((resolve) => {
+      storage.get(keys, (items: Record<string, any>) => resolve(items || {}));
     });
 
-    const directKey = allData.groq_api_key || allData.groqApiKey || allData.groqKey;
+    const directKey = data.groq_api_key || data.groqApiKey || data.groqKey;
     if (typeof directKey === 'string' && directKey.trim()) {
       return directKey.trim();
-    }
-    
-    // Fallback: buscar cualquier string que empiece con gsk_
-    for (const val of Object.values(allData)) {
-      if (typeof val === 'string' && val.trim().startsWith('gsk_')) {
-        return val.trim();
-      }
     }
   } catch (error) {
     console.error('[SA:client] Error al leer el almacenamiento:', error);
@@ -122,15 +114,15 @@ async function streamOnce(
       signal: controller.signal
     });
   } catch (err: any) {
-    clearTimeout(timeoutId);
     if (err?.name === 'AbortError') {
-      // Si el usuario cancelo desde el modal, relanzamos el error original
       if (options.signal?.aborted) {
         throw err;
       }
       throw new Error('La conexion con Groq excedio el tiempo de espera. Intenta de nuevo.');
     }
     throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (!response.ok) {

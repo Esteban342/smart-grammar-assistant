@@ -10,13 +10,16 @@ const GRAMMAR_MODEL = 'qwen/qwen3.8-27b';
 export async function correctWithQwen(
   text: string,
   onChunk: (chunk: string) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  skipCache = false
 ): Promise<string> {
   // 1. Intentar leer del cache
-  const cached = await getCachedResult(text, 'grammar');
-  if (cached) {
-    onChunk(cached);
-    return cached;
+  if (!skipCache) {
+    const cached = await getCachedResult(text, 'grammar');
+    if (cached) {
+      onChunk(cached);
+      return cached;
+    }
   }
 
   // 2. Llamar a la API
@@ -26,7 +29,8 @@ export async function correctWithQwen(
       systemPrompt: GRAMMAR_SYSTEM_PROMPT,
       userPrompt: text,
       temperature: 0,
-      maxTokens: 2048,
+      maxTokens: 8192,
+      reasoningEffort: 'none',
       signal: signal
     },
     onChunk

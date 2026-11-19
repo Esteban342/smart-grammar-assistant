@@ -1,14 +1,20 @@
 // src/content/ui/modal/modal-click-outside.ts
-// Cierra el modal cuando el usuario hace clic fuera de el.
+// Cierra el modal al hacer clic fuera o al presionar la tecla Escape.
 
 import { getOwnShadowRoot } from '../shadow';
 import { MODAL_ID, MENU_ID } from './styles';
 
 export function setupClickOutsideToClose(modal: HTMLElement, onClose: () => void): void {
-  const handler = (e: MouseEvent) => {
+  
+  const cleanup = () => {
+    document.removeEventListener('mousedown', handleClickOutside, true);
+    document.removeEventListener('keydown', handleKeyDown, true);
+  };
+
+  const handleClickOutside = (e: MouseEvent) => {
     const root = getOwnShadowRoot();
     if (!root.getElementById(MODAL_ID)) {
-      document.removeEventListener('mousedown', handler, true);
+      cleanup();
       return;
     }
 
@@ -20,11 +26,26 @@ export function setupClickOutsideToClose(modal: HTMLElement, onClose: () => void
     }
 
     onClose();
-    document.removeEventListener('mousedown', handler, true);
+    cleanup();
   };
 
-  // Pequeña espera para no capturar el mismo clic que abrio el modal.
+  const handleKeyDown = (e: KeyboardEvent) => {
+    const root = getOwnShadowRoot();
+    if (!root.getElementById(MODAL_ID)) {
+      cleanup();
+      return;
+    }
+
+    // Atrapa la tecla Escape (Escape o Esc dependiendo del navegador)
+    if (e.key === 'Escape' || e.key === 'Esc') {
+      onClose();
+      cleanup();
+    }
+  };
+
+  // Pequeña espera para no capturar el mismo clic que abrió el modal.
   setTimeout(() => {
-    document.addEventListener('mousedown', handler, true);
+    document.addEventListener('mousedown', handleClickOutside, true);
+    document.addEventListener('keydown', handleKeyDown, true);
   }, 100);
 }

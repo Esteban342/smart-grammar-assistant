@@ -19,8 +19,13 @@ export interface GrammarSuggestion {
   applied: boolean;
 }
 
+export type DiffSegment = 
+  | { type: 'equal'; text: string }
+  | { type: 'change'; index: number }
+
 export interface GrammarState {
   originalText: string;
   correctedText: string;
   suggestions: GrammarSuggestion[];
+  segments: DiffSegment[];
 }
