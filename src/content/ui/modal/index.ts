@@ -2,6 +2,7 @@
 // API publica del sistema de modales.
 // Orquesta el menu flotante, el modal y los modos de contenido.
 
+import { showToast } from '../../replacer/toast';
 import { getOwnShadowRoot } from '../shadow';
 import { ensureStyles, MODAL_ID } from './styles';
 import { appState } from './state';
@@ -108,7 +109,7 @@ function openModal(originalText: string, mode: string, editableTarget: any): voi
     onRegen: () => {
       delete appState.modalCache[mode];
       appState.grammarState = null;
-      loadContent(originalText, mode, root, isGrammar);
+      loadContent(originalText, mode, root, isGrammar, true);
     },
     onReplace: editableTarget
       ? async () => {
@@ -117,7 +118,11 @@ function openModal(originalText: string, mode: string, editableTarget: any): voi
           if (!textToReplace.trim()) return;
           try {
             const result = await replaceTextInPage(editableTarget, textToReplace);
-            if (result === 'inserted') removeExistingModal();
+            if (result === 'inserted') {
+              removeExistingModal();
+            } else {
+              showToast('Texto copiado. Pega con Ctrl+V.');
+            }
           } catch (err) {
             log('Error al reemplazar:', err);
           }
@@ -155,7 +160,8 @@ function loadContent(
   text: string,
   mode: string,
   root: ShadowRoot,
-  isGrammar: boolean
+  isGrammar: boolean,
+  skipCache = false
 ): void {
   const outputDiv = root.getElementById('sa-modal-output');
   const grammarArea = root.getElementById('sa-grammar-area');
@@ -212,7 +218,7 @@ function loadContent(
       if (isGrammar) {
         void runGrammarMode(text, outputDiv, grammarArea, signal);
       } else {
-        void runRewriteMode(text, mode, outputDiv, signal);
+        void runRewriteMode(text, mode, outputDiv, signal, skipCache);
       }
     });
 

@@ -16,6 +16,9 @@ async function performDocsPaste(tabId: number): Promise<PasteResponse> {
   try {
     await chrome.debugger.attach({ tabId }, '1.3');
 
+    const platform = await chrome.runtime.getPlatformInfo();
+    const modifiers = platform.os === 'mac' ? 4 : 2;
+
     // keyDown
     await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
       type: 'keyDown',
@@ -29,7 +32,7 @@ async function performDocsPaste(tabId: number): Promise<PasteResponse> {
     // keyUp
     await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
       type: 'keyUp',
-      modifiers: 2,
+      modifiers,
       key: 'v',
       code: 'KeyV',
       windowsVirtualKeyCode: 86,

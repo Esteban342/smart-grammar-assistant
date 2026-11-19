@@ -65,6 +65,6 @@ export function detectEditableTarget(el: Element | null): EditableTarget | null 
 }
 
 function isTextLikeInput(el: HTMLInputElement): boolean {
-  const nonTextTypes = ['checkbox', 'radio', 'button', 'submit', 'file', 'range', 'color', 'image', 'reset'];
+  const nonTextTypes = ['checkbox', 'radio', 'button', 'submit', 'file', 'range', 'color', 'image', 'reset', 'password'];
   return !nonTextTypes.includes(el.type);
 }

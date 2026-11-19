@@ -22,11 +22,12 @@ function shouldInit(): boolean {
 function registerMessageListener(): void {
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.action === 'OPEN_MODAL_FROM_CONTEXT' && message.text) {
+      if (window.top !== window.self) return false;
       log('mensaje del menu contextual recibido, modo:', message.mode);
       openModalDirectly(message.text, message.mode);
       sendResponse({ ok: true });
     }
-    return true;
+    return false;
   });
 }
 

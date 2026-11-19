@@ -4,8 +4,9 @@
 import * as Diff from 'diff';
 import { correctTextWithQwen } from '../../../services/groq';
 import { appState } from './state';
-import type { GrammarSuggestion } from './types';
+import type { DiffSegment, GrammarSuggestion } from './types';
 import { SA_DEBUG } from '../../selection';
+
 
 function log(...args: unknown[]): void {
   if (SA_DEBUG) console.log('[SA:modal]', ...args);
@@ -24,34 +25,55 @@ function sanitizeText(text: string): string {
     .trim();
 }
 
-// Calcula la lista de cambios comparando original y corregido.
-function computeLocalDiff(original: string, corrected: string): Array<{ from: string; to: string }> {
+// Calcula los segmentos y sugerencias comparando original y corregido.
+function computeLocalDiff(
+  original: string,
+  corrected: string
+): { suggestions: GrammarSuggestion[]; segments: DiffSegment[] } {
   try {
     const parts = Diff.diffWords(original, corrected);
-    const corrections: Array<{ from: string; to: string }> = [];
+    const suggestions: GrammarSuggestion[] = [];
+    const segments: DiffSegment[] = [];
 
     let i = 0;
     while (i < parts.length) {
       const part = parts[i];
+
       if (part.removed) {
         const next = parts[i + 1];
         if (next && next.added) {
-          const fromText = part.value.trim();
-          const toText = next.value.trim();
-          if (fromText && toText && fromText !== toText) {
-            corrections.push({ from: fromText, to: toText });
-          }
+          // Reemplazo: se quito algo y se puso otra cosa
+          const index = suggestions.length;
+          suggestions.push({ from: part.value, to: next.value, applied: true });
+          segments.push({ type: 'change', index });
           i += 2;
           continue;
         }
+        // Borrado puro: se elimino una palabra o espacio extra
+        const index = suggestions.length;
+        suggestions.push({ from: part.value, to: '', applied: true });
+        segments.push({ type: 'change', index });
+        i += 1;
+        continue;
       }
-      i++;
+
+      if (part.added) {
+        // Insercion pura: se anadio una palabra o coma faltante
+        const index = suggestions.length;
+        suggestions.push({ from: '', to: part.value, applied: true });
+        segments.push({ type: 'change', index });
+        i += 1;
+        continue;
+      }
+
+      segments.push({ type: 'equal', text: part.value });
+      i += 1;
     }
 
-    return corrections;
+    return { suggestions, segments };
   } catch (err) {
     console.error('[SA:modal] Error en diff local:', err);
-    return [];
+    return { suggestions: [], segments: [] };
   }
 }
 
@@ -75,14 +97,16 @@ function renderGrammarArea(container: HTMLElement): void {
   const buttonLabel = allApplied ? 'Desmarcar todo' : 'Aplicar todo';
   const counterText = `${total} ${total === 1 ? 'cambio' : 'cambios'} - ${applied} activo${applied === 1 ? '' : 's'}`;
 
-  const suggestionsHtml = state.suggestions
+const suggestionsHtml = state.suggestions
     .map((s, i) => {
       const appliedClass = s.applied ? 'sa-applied' : '';
+      const fromLabel = s.from.trim() ? escapeHtml(s.from.trim()) : '∅';
+      const toLabel = s.to.trim() ? escapeHtml(s.to.trim()) : '∅';
       return `
         <div class="sa-grammar-suggestion ${appliedClass}" data-index="${i}">
-          <span class="sa-sug-original">${escapeHtml(s.from)}</span>
+          <span class="sa-sug-original">${fromLabel}</span>
           <span class="sa-sug-arrow">a</span>
-          <span class="sa-sug-replacement">${escapeHtml(s.to)}</span>
+          <span class="sa-sug-replacement">${toLabel}</span>
           <span class="sa-sug-check"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6 9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         </div>
       `;
@@ -136,12 +160,14 @@ function refreshGrammarView(): void {
   if (!outputDiv || !grammarArea) return;
 
   // Reconstruir el texto con los cambios marcados como aplicados
-  let result = state.correctedText;
-  for (const s of state.suggestions) {
-    if (!s.applied) {
-      result = result.replace(s.to, s.from);
-    }
-  }
+// Reconstruir el texto exacto usando los segmentos del diff
+  const result = state.segments
+    .map((seg) => {
+      if (seg.type === 'equal') return seg.text;
+      const s = state.suggestions[seg.index];
+      return s.applied ? s.to : s.from;
+    })
+    .join('');
 
   outputDiv.innerText = result;
   renderGrammarArea(grammarArea);
@@ -151,7 +177,8 @@ export async function runGrammarMode(
   text: string,
   outputDiv: HTMLElement,
   grammarArea: HTMLElement | null,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  skipCache = false
 ): Promise<void> {
   appState.isProcessing = true;
 
@@ -201,12 +228,16 @@ export async function runGrammarMode(
     correctedText = await correctTextWithQwen(cleanText, (chunk: string) => {
       for (const char of chunk) charQueue.push(char);
       startSmoothTyping();
-    }, signal);
+    }, signal, skipCache);
 
     if (!isTyping) {
       outputDiv.innerText = correctedText;
     }
   } catch (error: any) {
+    if (error?.name === 'AbortError' || String(error).includes('AbortError')) {
+      appState.isProcessing = false;
+      return;
+    }
     console.error('[SA:modal] grammar paso 1 fallo:', error);
     outputDiv.innerText = `Error: ${error?.message || 'no se pudo corregir el texto'}`;
     if (grammarArea) grammarArea.innerHTML = '';
@@ -214,11 +245,11 @@ export async function runGrammarMode(
     return;
   }
 
-  // PASO 2: diff local
-  const corrections = computeLocalDiff(cleanText, correctedText);
-  log('[grammar] diff local encontro', corrections.length, 'cambios');
+// PASO 2: diff local
+  const { suggestions, segments } = computeLocalDiff(cleanText, correctedText);
+  log('[grammar] diff local encontro', suggestions.length, 'cambios');
 
-  if (corrections.length === 0) {
+  if (suggestions.length === 0) {
     appState.grammarState = null;
     if (grammarArea) {
       grammarArea.innerHTML = `
@@ -234,11 +265,8 @@ export async function runGrammarMode(
   appState.grammarState = {
     originalText: cleanText,
     correctedText,
-    suggestions: corrections.map<GrammarSuggestion>((c) => ({
-      from: c.from,
-      to: c.to,
-      applied: true,
-    })),
+    suggestions,
+    segments,
   };
 
   if (grammarArea) {

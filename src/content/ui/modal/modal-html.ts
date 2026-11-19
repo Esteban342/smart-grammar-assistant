@@ -68,7 +68,7 @@ export function createModalHtml(
 
     <div class="sa-modal-output" id="sa-modal-output">${LOADING_SPINNER_HTML}</div>
 
-    <div id="sa-grammar-area"></div>
+    <div id="sa-grammar-area" class=" sa-grammar-area"></div>
 
     <div class="sa-modal-actions">
       <button class="sa-modal-btn" id="sa-copy-btn">${SVG_COPY} Copiar</button>
