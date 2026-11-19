@@ -49,9 +49,6 @@ document.addEventListener('DOMContentLoaded', () => {
       chrome.storage.local.set(
         {
           groq_api_key: apiKey,
-          groqApiKey: apiKey,
-          gemini_api_key: apiKey,
-          geminiApiKey: apiKey
         },
         () => {
           updateStatus(true);

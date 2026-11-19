@@ -88,7 +88,9 @@ export async function runRewriteMode(
     } else {
       outputDiv.innerText = `Error: ${errorMsg}`;
     }
-  } finally {
-    appState.isProcessing = false;
+ } finally {
+    if (!signal?.aborted) {
+      appState.isProcessing = false;
+    }
   }
 }

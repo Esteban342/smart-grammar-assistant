@@ -85,8 +85,8 @@ Reglas generales:
 - Mayuscula al inicio de cada oracion.
 - No cambies el significado ni el registro del texto.
 
-Reglas especificas del espanol (aplicar solo si el texto esta en espanol):
-- Los participios en -ado/-ido NUNCA llevan tilde. Ejemplo: "he estado" (no "he estado").
-- El verbo estar SI lleva tilde: "esta", "estas", "esten".
+Reglas específicas del español (aplicar solo si el texto está en español):
+- Los participios en -ado/-ido NUNCA llevan tilde. Ejemplo: "he estado" (no "he estádo").
+- El verbo estar SÍ lleva tilde: "está", "estás", "estén".
 
 Devuelve solo el texto corregido, sin explicaciones.`;
