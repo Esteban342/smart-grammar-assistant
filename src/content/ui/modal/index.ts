@@ -2,6 +2,7 @@
 // API publica del sistema de modales.
 // Orquesta el menu flotante, el modal y los modos de contenido.
 
+import { detectEditableTarget} from '../../core/selection-helpers';
 import { showToast } from '../../replacer/toast';
 import { getOwnShadowRoot } from '../shadow';
 import { ensureStyles, MODAL_ID } from './styles';
@@ -35,7 +36,10 @@ export function showFloatingMenu(options: {
 
 export function openModalDirectly(text: string, mode: string): void {
   removeFloatingMenu();
-  openModal(text, mode, null);
+  const activeEl = document.activeElement;
+  const isReal = activeEl && activeEl !== document.body && activeEl !== document.documentElement;
+  const editableTarget = isReal ? detectEditableTarget(activeEl) : null;
+  openModal(text, mode, editableTarget);
 }
 
 // ============================================================
@@ -95,15 +99,19 @@ function openModal(originalText: string, mode: string, editableTarget: any): voi
   // Callbacks del modal
   const callbacks = {
     onClose: () => removeExistingModal(),
-    onCopy: () => {
+    onCopy: async () => {
       const outputEl = root.getElementById('sa-modal-output');
       const textToCopy = outputEl?.innerText || '';
       if (!textToCopy.trim()) return;
-      navigator.clipboard.writeText(textToCopy);
       const btn = root.getElementById('sa-copy-btn') as HTMLButtonElement | null;
-      if (btn) {
-        btn.textContent = 'Copiado';
-        setTimeout(() => (btn.textContent = 'Copiar'), 1500);
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        if (btn) {
+          btn.textContent = 'Copiado';
+          setTimeout(() => (btn.textContent = 'Copiar'), 1500);
+        }
+      } catch {
+        showToast('No se pudo copiar. Usa Ctrl+C.');
       }
     },
     onRegen: () => {
