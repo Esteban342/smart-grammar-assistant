@@ -224,7 +224,7 @@ function loadContent(
       const signal = appState.currentAbortController.signal;
 
       if (isGrammar) {
-        void runGrammarMode(text, outputDiv, grammarArea, signal);
+        void runGrammarMode(text, outputDiv, grammarArea, signal, skipCache);
       } else {
         void runRewriteMode(text, mode, outputDiv, signal, skipCache);
       }
@@ -239,9 +239,9 @@ function loadContent(
   const signal = appState.currentAbortController.signal;
 
   if (isGrammar) {
-    void runGrammarMode(text, outputDiv, grammarArea, signal);
+    void runGrammarMode(text, outputDiv, grammarArea, signal, skipCache);
   } else {
-    void runRewriteMode(text, mode, outputDiv, signal);
+    void runRewriteMode(text, mode, outputDiv, signal, skipCache);
   }
 }
 

@@ -22,7 +22,7 @@ async function performDocsPaste(tabId: number): Promise<PasteResponse> {
     // keyDown
     await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
       type: 'keyDown',
-      modifiers: 2, // Ctrl
+      modifiers, 
       key: 'v',
       code: 'KeyV',
       windowsVirtualKeyCode: 86,
