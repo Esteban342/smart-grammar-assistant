@@ -113,7 +113,7 @@ async function streamOnce(
       body: JSON.stringify(body),
       signal: controller.signal
     });
-  } catch (err: any) {
+  } catch (err: any) {          
     if (err?.name === 'AbortError') {
       if (options.signal?.aborted) {
         throw err;
@@ -191,6 +191,15 @@ async function streamOnce(
         }
       }
     }
+
+  } catch (err: any) {          // <--- AQUI empieza lo que tienes que agregar
+    if (err?.name === 'AbortError') {
+      if (options.signal?.aborted) {
+        throw err;
+      }
+      throw new Error('La conexion con Groq excedio el tiempo de espera. Intenta de nuevo.');
+    }
+    throw err; 
 
   } finally {
     clearTimeout(timeoutId);
