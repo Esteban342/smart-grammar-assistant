@@ -9,22 +9,37 @@
   <body>
     <div class="header">
       <h2>Smart Assistant</h2>
+      <p class="subtitle">Si tu IA principal se queda sin cuota, cambia automáticamente a la siguiente.</p>
     </div>
 
     <div class="form-group">
-      <label for="apiKey">Groq API Key</label>
+      <div class="label-row">
+        <label for="providerSelect">1. Elige una IA</label>
+        <a id="getKeyLink" href="https://console.groq.com/keys" target="_blank" class="help-link">Obtener clave ↗</a>
+      </div>
+      <select id="providerSelect">
+        <option value="groq">Groq (Gratis y rápida - Recomendada)</option>
+        <option value="gemini">Google Gemini (Gratis)</option>
+        <option value="openrouter">OpenRouter (Modelos gratis)</option>
+        <option value="mistral">Mistral</option>
+        <option value="openai">OpenAI (De pago)</option>
+        <option value="deepseek">DeepSeek (De pago)</option>
+      </select>
+
+      <label for="apiKey" style="margin-top: 4px;">2. Pega tu API Key</label>
       <div class="input-wrapper">
         <input type="password" id="apiKey" placeholder="gsk_..." autocomplete="off" />
-        <button id="saveBtn">Guardar</button>
+        <button id="addBtn">Guardar</button>
       </div>
     </div>
 
-    <div id="status" class="status-badge">
-      <span>Configura tu API Key para comenzar</span>
+    <div class="list-section">
+      <label>Tus IAs configuradas</label>
+      <div id="providerList" class="provider-list"></div>
     </div>
 
-    <div class="info-box">
-      <strong>Asistente activo:</strong> Selecciona texto en cualquier página para corregir o humanizar tus textos.
+    <div id="status" class="status-badge">
+      <span>Agrega al menos una API Key para empezar</span>
     </div>
 
     <script type="module" src="./popup.ts"></script>
