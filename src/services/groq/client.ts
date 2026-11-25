@@ -1,26 +1,7 @@
 // src/services/groq/client.ts
-// Cliente base para llamar a la API de Groq con streaming SSE.
+// Cliente multi-proveedor compatible con OpenAI/SSE y salto automatico por prioridad.
 
-async function getGroqApiKey(): Promise<string> {
-  const storage = (globalThis as any).chrome?.storage?.local;
-  if (!storage) return '';
-
-  try {
-    const keys = ['groq_api_key', 'groqApiKey', 'groqKey'];
-    const data = await new Promise<Record<string, any>>((resolve) => {
-      storage.get(keys, (items: Record<string, any>) => resolve(items || {}));
-    });
-
-    const directKey = data.groq_api_key || data.groqApiKey || data.groqKey;
-    if (typeof directKey === 'string' && directKey.trim()) {
-      return directKey.trim();
-    }
-  } catch (error) {
-    console.error('[SA:client] Error al leer el almacenamiento:', error);
-  }
-
-  return '';
-}
+import { PROVIDERS, getConfiguredProviders, type SavedProvider } from '../providers';
 
 export interface StreamOptions {
   model: string;
@@ -32,15 +13,10 @@ export interface StreamOptions {
   signal?: AbortSignal;
 }
 
-interface ErrorInfo {
-  isRateLimit: boolean;
-  isDailyLimit: boolean;
-  retryDelaySeconds: number | null;
-  message: string;
-}
-
-const MAX_RETRIES = 2;
-const FALLBACK_BACKOFF_SECONDS = [2, 4];
+// Cooldown en memoria: si un proveedor da 429, se pausa 60s
+// para saltar directo al siguiente y volver a intentarlo despues.
+const providerCooldowns: Record<string, number> = {};
+const COOLDOWN_MS = 60_000;
 
 function computeTimeoutMs(textLength: number): number {
   if (textLength < 500) return 15000;
@@ -48,77 +24,71 @@ function computeTimeoutMs(textLength: number): number {
   return 60000;
 }
 
-function classifyError(response: Response, errorBody: any): ErrorInfo {
-  const isRateLimit = response.status === 429;
-  const message = errorBody?.error?.message || `Error HTTP ${response.status}`;
-  const lower = message.toLowerCase();
-
-  const isDailyLimit = isRateLimit && (
-    lower.includes('per day') ||
-    lower.includes('daily')
-  );
-
-  let retryDelaySeconds: number | null = null;
-  const retryAfter = response.headers.get('retry-after');
-  if (retryAfter) {
-    const parsed = parseFloat(retryAfter);
-    if (!Number.isNaN(parsed)) retryDelaySeconds = parsed;
+function isProviderInCooldown(providerId: string): boolean {
+  const until = providerCooldowns[providerId];
+  if (!until) return false;
+  if (Date.now() >= until) {
+    delete providerCooldowns[providerId];
+    return false;
   }
-
-  return { isRateLimit, isDailyLimit, retryDelaySeconds, message };
+  return true;
 }
 
-async function streamOnce(
+async function streamWithProvider(
+  provider: SavedProvider,
   options: StreamOptions,
   onChunk: (chunk: string) => void,
   timeoutMs: number
 ): Promise<string> {
-  const apiKey = await getGroqApiKey();
-  if (!apiKey) {
-    throw new Error('API Key de Groq no configurada en la extension. Guarda tu API Key desde el popup.');
-  }
-
+  const meta = PROVIDERS[provider.id];
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
 
   if (options.signal) {
     if (options.signal.aborted) controller.abort();
     else options.signal.addEventListener('abort', () => controller.abort());
-  } 
+  }
+
+  const modelToUse = provider.model?.trim() || meta.defaultModel;
 
   const body: Record<string, unknown> = {
-    model: options.model,
+    model: modelToUse,
     messages: [
       { role: 'system', content: options.systemPrompt },
-      { role: 'user', content: options.userPrompt }
+      { role: 'user', content: options.userPrompt },
     ],
     temperature: options.temperature ?? 0.65,
-    max_tokens: options.maxTokens ?? 2048,
-    stream: true
+    max_tokens: options.maxTokens ?? 8192,
+    stream: true,
   };
 
-  if (options.reasoningEffort !== undefined) {
+  // reasoning_effort solo aplica a Groq (Qwen)
+  if (provider.id === 'groq' && options.reasoningEffort !== undefined) {
     body.reasoning_effort = options.reasoningEffort;
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${provider.apiKey.trim()}`,
+    'Content-Type': 'application/json',
+  };
+
+  if (provider.id === 'openrouter') {
+    headers['HTTP-Referer'] = 'https://github.com/Esteban342/smart-grammar-assistant';
+    headers['X-Title'] = 'Smart Grammar Assistant';
   }
 
   let response: Response;
   try {
-    response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    response = await fetch(meta.endpoint, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify(body),
-      signal: controller.signal
+      signal: controller.signal,
     });
-  } catch (err: any) {          
+  } catch (err: any) {
     if (err?.name === 'AbortError') {
-      if (options.signal?.aborted) {
-        throw err;
-      }
-      throw new Error('La conexion con Groq excedio el tiempo de espera. Intenta de nuevo.');
+      if (options.signal?.aborted) throw err;
+      throw new Error(`Tiempo de espera agotado con ${meta.name}.`);
     }
     throw err;
   } finally {
@@ -126,17 +96,20 @@ async function streamOnce(
   }
 
   if (!response.ok) {
-    clearTimeout(timeoutId);
     const errorBody = await response.json().catch(() => ({}));
-    const info = classifyError(response, errorBody);
-    const error: any = new Error(info.message);
-    error.__groqInfo = info;
-    throw error;
+    const message = errorBody?.error?.message || `Error HTTP ${response.status}`;
+
+    if (response.status === 429) {
+      providerCooldowns[provider.id] = Date.now() + COOLDOWN_MS;
+    }
+
+    const err: any = new Error(`[${meta.name}] ${message}`);
+    err.__status = response.status;
+    throw err;
   }
 
   if (!response.body) {
-    clearTimeout(timeoutId);
-    throw new Error('No se recibio flujo de datos desde la API de Groq.');
+    throw new Error(`[${meta.name}] No se recibio flujo de datos.`);
   }
 
   const reader = response.body.getReader();
@@ -171,8 +144,6 @@ async function streamOnce(
       }
     }
 
-    // FIX: Procesar el remanente del buffer al terminar el stream.
-    // A veces la ultima palabra de la IA se queda aqui y se perdia.
     if (buffer.trim()) {
       const trimmed = buffer.trim();
       if (trimmed.startsWith('data: ')) {
@@ -191,16 +162,12 @@ async function streamOnce(
         }
       }
     }
-
-  } catch (err: any) {          // <--- AQUI empieza lo que tienes que agregar
+  } catch (err: any) {
     if (err?.name === 'AbortError') {
-      if (options.signal?.aborted) {
-        throw err;
-      }
-      throw new Error('La conexion con Groq excedio el tiempo de espera. Intenta de nuevo.');
+      if (options.signal?.aborted) throw err;
+      throw new Error(`La conexion con ${meta.name} excedio el tiempo de espera.`);
     }
-    throw err; 
-
+    throw err;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -212,32 +179,35 @@ export async function streamCompletion(
   options: StreamOptions,
   onChunk: (chunk: string) => void
 ): Promise<string> {
+  const providers = await getConfiguredProviders();
+  if (providers.length === 0) {
+    throw new Error('API Key no configurada en la extension. Abre el popup y agrega al menos una API Key.');
+  }
+
   const timeoutMs = computeTimeoutMs(options.userPrompt.length);
+
+  // Ordenar: primero los que no estan en cooldown, luego los que si (por si todos estan en cooldown)
+  const ready = providers.filter((p) => !isProviderInCooldown(p.id));
+  const cooling = providers.filter((p) => isProviderInCooldown(p.id));
+  const queue = [...ready, ...cooling];
+
   let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      return await streamOnce(options, onChunk, timeoutMs);
-    } catch (err: any) {
-      lastError = err;
+  for (const provider of queue) {
+    if (options.signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
 
-      const info: ErrorInfo | undefined = err.__groqInfo;
-      if (!info || !info.isRateLimit) {
+    try {
+      return await streamWithProvider(provider, options, onChunk, timeoutMs);
+    } catch (err: any) {
+      if (err?.name === 'AbortError' && options.signal?.aborted) {
         throw err;
       }
-
-      if (info.isDailyLimit) {
-        throw new Error('Limite diario de Groq alcanzado. Vuelve a intentarlo mañana o usa otra API Key.');
-      }
-
-      if (attempt === MAX_RETRIES) {
-        throw new Error('Limite de cuota temporal alcanzado. Espera un minuto y vuelve a intentarlo.');
-      }
-
-      const delaySeconds = info.retryDelaySeconds ?? FALLBACK_BACKOFF_SECONDS[attempt] ?? 8;
-      await new Promise((r) => setTimeout(r, delaySeconds * 1000));
+      lastError = err;
+      console.warn(`[SA:client] Fallo ${provider.id}, intentando siguiente proveedor:`, err?.message);
     }
   }
 
-  throw lastError || new Error('Error desconocido al llamar a Groq.');
+  throw lastError || new Error('Todos los proveedores de IA fallaron. Verifica tus API Keys.');
 }
